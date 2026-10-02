@@ -1,0 +1,18 @@
+# dependencies
+node_modules/
+# builds
+dist/
+.netlify/
+# env & secrets
+.env
+.env.*
+!.env.example
+# legacy production data - NEVER commit personal data
+database/import/*
+!database/import/README.md
+legacy/
+*.sql.gz
+# misc
+.DS_Store
+*.log
+coverage/
