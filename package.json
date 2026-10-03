@@ -4,15 +4,20 @@
   "private": true,
   "description": "Dataverse - family profiles, Shekor family tree and Caller ID",
   "type": "module",
-  "workspaces": ["frontend", "backend"],
-  "engines": { "node": ">=20" },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "concurrently -n api,web -c green,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
     "build": "npm run build -w frontend",
     "start": "npm run start -w backend",
-    "db:migrate": "npm run migrate -w backend",
-    "db:import": "npm run import-legacy -w backend",
-    "admin:create": "npm run create-admin -w backend",
+    "db:migrate": "node backend/scripts/migrate.js",
+    "db:import": "node backend/scripts/import-legacy.js",
+    "admin:create": "node backend/scripts/create-admin.js",
     "test": "npm run test -w backend",
     "lint:check": "npm run check -w backend"
   },
