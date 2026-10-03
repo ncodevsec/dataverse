@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Brand scale built from the eight Dataverse greens:
+   200 #9de7a1 · 300 #86e68c · 400 #68e074 · 500 #3bbc58 · 600 #179a3d · 700 #0b8448 · 800 #09532f
+   (50/100/900/950 are derived tints/shades; "sage" is rgb(94,180,125)) */
+@theme {
+  --font-sans: "Hind Siliguri", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Bengali", sans-serif;
+  --font-display: "Bricolage Grotesque", "Hind Siliguri", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #effcf0;
+  --color-brand-100: #d6f6d9;
+  --color-brand-200: rgb(157, 231, 161);
+  --color-brand-300: rgb(134, 230, 140);
+  --color-brand-400: rgb(104, 224, 116);
+  --color-brand-500: rgb(59, 188, 88);
+  --color-brand-600: rgb(23, 154, 61);
+  --color-brand-700: rgb(11, 132, 72);
+  --color-brand-800: rgb(9, 83, 47);
+  --color-brand-900: #063a21;
+  --color-brand-950: #04281a;
+  --color-sage: rgb(94, 180, 125);
+}
+
+/* Semantic surface tokens. Greens are NEVER used for page/card backgrounds - only for accents. */
+:root {
+  --page: #f6f7f6;
+  --surface: #ffffff;
+  --surface-2: #f0f3f1;
+  --ink: #0f1a13;
+  --muted: #56655c;
+  --line: #dfe6e1;
+  --accent: rgb(11, 132, 72);
+  --accent-hover: rgb(9, 83, 47);
+  --accent-fg: #ffffff;
+  --accent-soft: #e6f5e8;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+  --warn-soft: #fff4d6;
+  color-scheme: light;
+}
+.dark {
+  --page: #060807;
+  --surface: #0e1210;
+  --surface-2: #151b18;
+  --ink: #e8f0ea;
+  --muted: #92a398;
+  --line: #222b26;
+  --accent: rgb(104, 224, 116);
+  --accent-hover: rgb(157, 231, 161);
+  --accent-fg: #04170b;
+  --accent-soft: rgba(104, 224, 116, 0.12);
+  --danger: #ff8a7a;
+  --danger-soft: rgba(255, 138, 122, 0.12);
+  --warn-soft: rgba(255, 214, 102, 0.12);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn-soft: var(--warn-soft);
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body { background: var(--page); color: var(--ink); font-family: var(--font-sans); line-height: 1.55; }
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.01em; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+::selection { background: var(--accent-soft); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Family-tree connectors: one thin vertical rule per generation, a short elbow into each node. */
+.tree-list { position: relative; margin-left: 0.9rem; padding-left: 1.1rem; border-left: 1.5px solid var(--line); }
+.tree-item { position: relative; padding-top: 0.35rem; }
+.tree-item::before { content: ""; position: absolute; left: -1.1rem; top: 1.45rem; width: 0.9rem; border-top: 1.5px solid var(--line); }
+.tree-list > .tree-item:last-child { }
+
+/* Pedigree (ancestors) - horizontal brackets */
+.ped { display: flex; align-items: center; }
+.ped-parents { display: flex; flex-direction: column; margin-left: 1.25rem; position: relative; }
+.ped-parents > .ped { position: relative; padding: 0.3rem 0; }
+.ped-parents > .ped::before { content: ""; position: absolute; left: -1.25rem; top: 50%; width: 1.25rem; border-top: 1.5px solid var(--line); }
+.ped-parents > .ped::after { content: ""; position: absolute; left: -1.25rem; width: 0; border-left: 1.5px solid var(--line); }
+.ped-parents > .ped:first-child::after { top: 50%; bottom: 0; }
+.ped-parents > .ped:last-child::after { top: 0; bottom: 50%; }
+.ped-parents > .ped:only-child::after { display: none; }
+.ped-stem { position: absolute; left: -1.25rem; top: 50%; width: 1.25rem; }
