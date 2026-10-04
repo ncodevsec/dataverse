@@ -12,8 +12,8 @@ if (config.bootstrapAdmin.email && config.bootstrapAdmin.password) {
     .catch((e) => console.error('[bootstrap] could not create administrator:', e.errors?.[0]?.message || e.message));
 }
 
-const server = app.listen(config.port, async () => {
-  console.log(`Dataverse API listening on http://localhost:${config.port} (${config.env})`);
+const server = app.listen(config.port, config.host, async () => {
+  console.log(`Dataverse API listening on http://${config.host}:${config.port} (${config.env})`);
   try { await query('SELECT 1'); console.log('Database connection OK'); } catch (e) { console.error('Database connection FAILED:', e.message); }
 });
 
