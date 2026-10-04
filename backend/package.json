@@ -11,9 +11,11 @@
     "create-admin": "node scripts/create-admin.js",
     "import-legacy": "node scripts/import-legacy.js",
     "check": "node scripts/check-syntax.js",
-    "test": "node --test --test-concurrency=1 tests/*.test.js"
+    "test": "node --test --test-concurrency=1 tests/*.test.js",
+    "backup": "node scripts/backup.js"
   },
   "dependencies": {
+    "archiver": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

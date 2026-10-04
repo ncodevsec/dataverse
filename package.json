@@ -19,7 +19,8 @@
     "db:import": "node backend/scripts/import-legacy.js",
     "admin:create": "node backend/scripts/create-admin.js",
     "test": "npm run test -w backend",
-    "lint:check": "npm run check -w backend"
+    "lint:check": "npm run check -w backend",
+    "backup": "node backend/scripts/backup.js"
   },
   "devDependencies": {
     "concurrently": "^9.0.1"

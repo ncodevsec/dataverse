@@ -3,6 +3,7 @@ import { requireAdmin } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import * as a from '../controllers/adminController.js';
 import * as contacts from '../controllers/contactController.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { idParam, uuidParam, userListQuery, adminUserCreateSchema, adminUserUpdateSchema, adminResetPasswordSchema, siteSettingsSchema, auditQuery } from '../utils/schemas.js';
 
 // Every route in this router requires an authenticated ADMIN - enforced here on the server, regardless of what the UI shows.
@@ -30,3 +31,6 @@ adminRouter.get('/audit-logs/actions', a.auditActions);
 adminRouter.get('/contacts/duplicates', contacts.duplicates);
 adminRouter.post('/contacts/relink', contacts.relink);
 adminRouter.delete('/contacts/phonebook/:id', validate({ params: idParam }), contacts.bulkDelete);
+
+// Full export (database + images) as one date/time-stamped ZIP. Admin only, audited, and rate limited.
+adminRouter.get('/backup', rateLimit({ name: 'backup', windowMs: 60 * 60 * 1000, max: 5, keyFn: (req) => req.user?.id }), a.downloadBackup);

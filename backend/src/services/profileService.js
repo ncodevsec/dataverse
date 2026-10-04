@@ -3,7 +3,7 @@ import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js
 import { digitsOnly, escapeLike } from '../utils/phone.js';
 import { SOCIAL_NETWORKS } from '../utils/schemas.js';
 
-// API field -> column. spouseId is handled separately because the relationship is symmetric.
+// API field -> column. spouses / childIds / siblingIds are handled separately because they edit other rows.
 export const FIELD_COLUMNS = {
   name: 'name', nickname: 'nickname', email: 'email', phone: 'phone', gender: 'gender', maritalStatus: 'marital_status',
   dob: 'dob', bloodGroup: 'blood_group', religion: 'religion', politicalView: 'political_view', nid: 'nid',
@@ -11,7 +11,7 @@ export const FIELD_COLUMNS = {
   presentStreet: 'present_street', presentCity: 'present_city', street: 'street', unionName: 'union_name',
   subDistrict: 'sub_district', district: 'district', state: 'state', zip: 'zip', country: 'country',
   socialLinks: 'social_links', about: 'about', tags: 'tags', dateOfDeath: 'date_of_death',
-  fatherId: 'father_id', motherId: 'mother_id',
+  fatherId: 'father_id', motherId: 'mother_id', entityType: 'entity_type',
 };
 
 const photoUrl = (r) => (r.photo_updated_at ? `/api/profiles/${r.id}/photo?v=${new Date(r.photo_updated_at).getTime()}` : null);
@@ -19,6 +19,7 @@ const photoUrl = (r) => (r.photo_updated_at ? `/api/profiles/${r.id}/photo?v=${n
 /** Small card-sized representation used in lists, pickers and trees. */
 export const toSummary = (r) => ({
   id: r.id,
+  entityType: r.entity_type,
   name: r.name,
   nickname: r.nickname,
   gender: r.gender,
@@ -38,7 +39,7 @@ export const toSummary = (r) => ({
   photoUrl: photoUrl(r),
 });
 
-export const SUMMARY_COLUMNS = `p.id, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
+export const SUMMARY_COLUMNS = `p.id, p.entity_type, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
   p.district, p.present_city, p.phone, p.lineage, p.tags, p.father_id, p.mother_id, p.spouse_id, p.photo_updated_at`;
 
 // ---------------------------------------------------------------- permissions
@@ -95,6 +96,7 @@ export async function searchProfiles(f) {
     }
     rank = `(lower(p.name) = lower(${p(f.q)})) DESC, (p.name ILIKE ${p(`${escapeLike(f.q)}%`)}) DESC, `;
   }
+  if (f.entityType) where.push(`p.entity_type = ${p(f.entityType)}`);
   if (f.gender) where.push(`p.gender = ${p(f.gender)}`);
   if (f.maritalStatus) where.push(`p.marital_status = ${p(f.maritalStatus)}`);
   if (f.bloodGroup) where.push(`p.blood_group = ${p(f.bloodGroup)}`);
@@ -118,8 +120,8 @@ export async function searchProfiles(f) {
 }
 
 /** Lightweight lookup used by relationship pickers and global search. */
-export async function lookupProfiles(q, limit = 8) {
-  const { items } = await searchProfiles({ q, page: 1, limit, sort: 'name' });
+export async function lookupProfiles(q, limit = 8, entityType) {
+  const { items } = await searchProfiles({ q, page: 1, limit, sort: 'name', entityType });
   return items;
 }
 
@@ -133,7 +135,7 @@ export async function getFamily(id) {
   const sel = (where) => `SELECT ${SUMMARY_COLUMNS} FROM profiles p WHERE ${where}`;
   const row = await getProfileRow(id);
   if (!row) throw notFound('Profile not found');
-  const [father, mother, spouse, children, siblings] = await Promise.all([
+  const [father, mother, spouse, children, siblings, marriageRows] = await Promise.all([
     row.father_id ? query(sel('p.id = $1'), [row.father_id]) : { rows: [] },
     row.mother_id ? query(sel('p.id = $1'), [row.mother_id]) : { rows: [] },
     row.spouse_id ? query(sel('p.id = $1'), [row.spouse_id]) : { rows: [] },
@@ -142,33 +144,67 @@ export async function getFamily(id) {
       ? query(`${sel('p.id <> $1 AND ((p.father_id IS NOT NULL AND p.father_id = $2) OR (p.mother_id IS NOT NULL AND p.mother_id = $3))')}
                ORDER BY p.dob NULLS LAST, p.id LIMIT 200`, [id, row.father_id, row.mother_id])
       : { rows: [] },
+    query(`SELECT m.id AS marriage_id, m.married_on, m.ended_on, m.end_reason, m.note, ${SUMMARY_COLUMNS}
+             FROM marriages m JOIN profiles p ON p.id = CASE WHEN m.person_a = $1 THEN m.person_b ELSE m.person_a END
+            WHERE m.person_a = $1 OR m.person_b = $1
+            ORDER BY m.married_on NULLS LAST, m.id`, [id]),
   ]);
   return {
     father: father.rows[0] ? toSummary(father.rows[0]) : null,
     mother: mother.rows[0] ? toSummary(mother.rows[0]) : null,
     spouse: spouse.rows[0] ? toSummary(spouse.rows[0]) : null,
+    spouses: marriageRows.rows.map((r) => ({
+      marriageId: r.marriage_id, person: toSummary(r), marriedOn: r.married_on, endedOn: r.ended_on, endReason: r.end_reason, note: r.note,
+      current: !r.ended_on && !r.end_reason,
+    })),
     children: children.rows.map(toSummary),
     siblings: siblings.rows.map(toSummary),
   };
 }
 
+const PERMANENT = ['street', 'union_name', 'sub_district', 'district', 'state', 'zip', 'country'];
+const hasAddress = (r) => PERMANENT.some((c) => r[c] != null && String(r[c]).trim() !== '');
+
+/** If the permanent address is empty, use the nearest paternal ancestor's address (father, then grandfather...). */
+async function inheritedAddress(row) {
+  if (hasAddress(row) || !row.father_id) return null;
+  const { rows } = await query(
+    `WITH RECURSIVE c AS (
+       SELECT id, name, father_id, ${PERMANENT.join(', ')}, 1 AS depth FROM profiles WHERE id = $1
+       UNION ALL
+       SELECT p.id, p.name, p.father_id, ${PERMANENT.map((x) => `p.${x}`).join(', ')}, c.depth + 1 FROM c JOIN profiles p ON p.id = c.father_id WHERE c.depth < 20
+     ) SELECT * FROM c WHERE (${PERMANENT.map((x) => `coalesce(btrim(${x}), '') <> ''`).join(' OR ')}) ORDER BY depth LIMIT 1`, [row.father_id]);
+  if (!rows[0]) return null;
+  const r = rows[0];
+  return { from: { id: r.id, name: r.name }, street: r.street, unionName: r.union_name, subDistrict: r.sub_district, district: r.district, state: r.state, zip: r.zip, country: r.country };
+}
+
 export async function getProfile(id, viewer) {
   const row = await getProfileRow(id);
   if (!row) throw notFound('Profile not found');
-  return { profile: toFull(row, viewer), family: await getFamily(id) };
+  const [family, inherited, saved] = await Promise.all([
+    getFamily(id),
+    inheritedAddress(row),
+    query('SELECT count(*)::int AS n FROM caller_contacts WHERE connection_id = $1', [id]),
+  ]);
+  return { profile: { ...toFull(row, viewer), inheritedAddress: inherited, savedContactsCount: saved.rows[0].n }, family };
 }
 
 // ---------------------------------------------------------------- relationship rules
 async function validateRelations(client, id, current, data) {
-  const ids = ['fatherId', 'motherId', 'spouseId'].map((k) => data[k]).filter((v) => v != null);
-  if (id != null && ids.includes(id)) throw badRequest('A person cannot be their own parent or spouse');
+  const type = data.entityType ?? current?.entity_type ?? 'HUMAN';
+  if (type !== 'HUMAN' && (data.fatherId != null || data.motherId != null)) throw badRequest('Only people can have a father or mother', { fatherId: 'Not available for this type' });
+  const ids = ['fatherId', 'motherId'].map((k) => data[k]).filter((v) => v != null);
+  if (id != null && ids.includes(id)) throw badRequest('A person cannot be their own parent');
   if (data.fatherId != null && data.fatherId === data.motherId) throw badRequest('Father and mother must be different people');
   if (!ids.length) return;
 
-  const { rows } = await client.query('SELECT id, gender FROM profiles WHERE id = ANY($1::int[])', [ids]);
+  const { rows } = await client.query('SELECT id, gender, entity_type FROM profiles WHERE id = ANY($1::int[])', [ids]);
   const byId = new Map(rows.map((r) => [r.id, r]));
-  for (const [key, label] of [['fatherId', 'Father'], ['motherId', 'Mother'], ['spouseId', 'Spouse']]) {
-    if (data[key] != null && !byId.has(data[key])) throw badRequest(`${label} (ID ${data[key]}) does not exist`, { [key]: 'No profile with this ID' });
+  for (const [key, label] of [['fatherId', 'Father'], ['motherId', 'Mother']]) {
+    if (data[key] == null) continue;
+    if (!byId.has(data[key])) throw badRequest(`${label} (ID ${data[key]}) does not exist`, { [key]: 'No profile with this ID' });
+    if (byId.get(data[key]).entity_type !== 'HUMAN') throw badRequest(`${label} must be a person`, { [key]: 'Pick a person, not a group or organization' });
   }
   // Only enforce gender when the value is being changed, so legacy data never blocks unrelated edits.
   if (data.fatherId != null && data.fatherId !== current?.father_id && byId.get(data.fatherId).gender === 'FEMALE')
@@ -191,24 +227,52 @@ async function validateRelations(client, id, current, data) {
   }
 }
 
-/** Keeps the spouse link symmetric and un-links any previous partners on both sides. */
-async function setSpouse(client, id, spouseId) {
-  const cur = (await client.query('SELECT spouse_id FROM profiles WHERE id = $1 FOR UPDATE', [id])).rows[0];
-  if (!cur || (cur.spouse_id ?? null) === (spouseId ?? null)) return;
-  if (cur.spouse_id) await client.query('UPDATE profiles SET spouse_id = NULL WHERE id = $1 AND spouse_id = $2', [cur.spouse_id, id]);
-  if (spouseId) {
-    const other = (await client.query('SELECT spouse_id FROM profiles WHERE id = $1 FOR UPDATE', [spouseId])).rows[0];
-    if (other?.spouse_id && other.spouse_id !== id) {
-      await client.query('UPDATE profiles SET spouse_id = NULL WHERE id = $1 AND spouse_id = $2', [other.spouse_id, spouseId]);
-    }
-    await client.query(
-      `UPDATE profiles SET spouse_id = $2, marital_status = CASE WHEN marital_status IS NULL OR marital_status = 'SINGLE' THEN 'MARRIED' ELSE marital_status END
-        WHERE id = $1`, [spouseId, id]);
-  }
+/** profiles.spouse_id = the current spouse (latest marriage that has not ended). Also keeps marital_status sensible. */
+async function refreshCurrentSpouse(client, ids) {
   await client.query(
-    `UPDATE profiles SET spouse_id = $2,
-       marital_status = CASE WHEN $2::int IS NOT NULL AND (marital_status IS NULL OR marital_status = 'SINGLE') THEN 'MARRIED' ELSE marital_status END
-     WHERE id = $1`, [id, spouseId ?? null]);
+    `UPDATE profiles p SET spouse_id = (
+        SELECT CASE WHEN m.person_a = p.id THEN m.person_b ELSE m.person_a END FROM marriages m
+         WHERE (m.person_a = p.id OR m.person_b = p.id) AND m.ended_on IS NULL AND m.end_reason IS NULL
+         ORDER BY m.married_on DESC NULLS LAST, m.id DESC LIMIT 1)
+      WHERE p.id = ANY($1::int[])`, [ids]);
+  await client.query(
+    `UPDATE profiles p SET marital_status = CASE
+        WHEN p.spouse_id IS NOT NULL THEN CASE WHEN p.marital_status IS NULL OR p.marital_status = 'SINGLE' THEN 'MARRIED' ELSE p.marital_status END
+        WHEN p.marital_status = 'MARRIED' THEN COALESCE((
+          SELECT CASE m.end_reason WHEN 'WIDOWED' THEN 'WIDOWED' WHEN 'DIVORCED' THEN 'DIVORCED' WHEN 'SEPARATED' THEN 'DIVORCED' END
+            FROM marriages m WHERE (m.person_a = p.id OR m.person_b = p.id) AND m.end_reason IS NOT NULL
+            ORDER BY m.ended_on DESC NULLS LAST, m.id DESC LIMIT 1), p.marital_status)
+        ELSE p.marital_status END
+      WHERE p.id = ANY($1::int[])`, [ids]);
+}
+
+/** Makes this person's marriages match the given list (add / update / remove), one record per spouse. */
+async function syncSpouses(client, id, spouses) {
+  const self = await getProfileRow(id, client);
+  if (spouses.length && self.entity_type !== 'HUMAN') throw badRequest('Only people can have spouses', { spouses: 'Not available for this type' });
+  const ids = spouses.map((x) => x.personId);
+  if (ids.includes(id)) throw badRequest('A person cannot be their own spouse', { spouses: 'Invalid selection' });
+  const found = (await client.query('SELECT id, entity_type FROM profiles WHERE id = ANY($1::int[])', [ids])).rows;
+  for (const sp of spouses) {
+    const row = found.find((r) => r.id === sp.personId);
+    if (!row) throw badRequest(`Spouse (ID ${sp.personId}) does not exist`, { spouses: `No profile with ID ${sp.personId}` });
+    if (row.entity_type !== 'HUMAN') throw badRequest('A spouse must be a person', { spouses: 'Pick a person' });
+    if (sp.marriedOn && sp.endedOn && sp.endedOn < sp.marriedOn) throw badRequest('A marriage cannot end before it began', { spouses: 'End date is before the marriage date' });
+  }
+  const existing = (await client.query('SELECT * FROM marriages WHERE person_a = $1 OR person_b = $1 FOR UPDATE', [id])).rows;
+  const other = (m) => (m.person_a === id ? m.person_b : m.person_a);
+  const touched = new Set([id]);
+  for (const m of existing) if (!ids.includes(other(m))) { await client.query('DELETE FROM marriages WHERE id = $1', [m.id]); touched.add(other(m)); }
+  for (const sp of spouses) {
+    const [a, b] = id < sp.personId ? [id, sp.personId] : [sp.personId, id];
+    const endReason = sp.endReason ?? (sp.endedOn ? 'OTHER' : null);
+    await client.query(
+      `INSERT INTO marriages (person_a, person_b, married_on, ended_on, end_reason) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (person_a, person_b) DO UPDATE SET married_on = EXCLUDED.married_on, ended_on = EXCLUDED.ended_on, end_reason = EXCLUDED.end_reason`,
+      [a, b, sp.marriedOn ?? null, sp.endedOn ?? null, endReason]);
+    touched.add(sp.personId);
+  }
+  await refreshCurrentSpouse(client, [...touched]);
 }
 
 function validateDates(current, data) {
@@ -247,6 +311,7 @@ async function syncRelatives(client, id, data, viewer) {
   const wantsSibs = Array.isArray(data.siblingIds);
   if (!wantsKids && !wantsSibs) return [];
   const self = await getProfileRow(id, client);
+  if (self.entity_type !== 'HUMAN') throw badRequest('Only people can have children or siblings', { childIds: 'Not available for this type' });
   const changed = [];
   const loadMany = async (ids) => new Map((await client.query('SELECT * FROM profiles WHERE id = ANY($1::int[]) FOR UPDATE', [ids])).rows.map((r) => [r.id, r]));
   const mayEdit = (row) => canEditProfile(viewer, row);
@@ -261,7 +326,10 @@ async function syncRelatives(client, id, data, viewer) {
       const added = desired.filter((x) => !current.includes(x));
       const removed = current.filter((x) => !desired.includes(x));
       const rows = await loadMany([...added, ...removed]);
-      for (const cid of added) if (!rows.has(cid)) throw badRequest(`Child (ID ${cid}) does not exist`, { childIds: `No profile with ID ${cid}` });
+      for (const cid of added) {
+        if (!rows.has(cid)) throw badRequest(`Child (ID ${cid}) does not exist`, { childIds: `No profile with ID ${cid}` });
+        if (rows.get(cid).entity_type !== 'HUMAN') throw badRequest('A child must be a person', { childIds: 'Pick a person' });
+      }
       if (added.length) {
         const bad = new Set(await ancestorsOf(client, id));
         const hit = added.find((x) => bad.has(x));
@@ -293,7 +361,10 @@ async function syncRelatives(client, id, data, viewer) {
       const removed = current.filter((x) => !desired.includes(x));
       if (added.length && !me.father_id && !me.mother_id) throw badRequest('Link a father or mother first; siblings are people who share a parent', { siblingIds: 'This person has no parents linked' });
       const rows = await loadMany([...added, ...removed]);
-      for (const sid of added) if (!rows.has(sid)) throw badRequest(`Sibling (ID ${sid}) does not exist`, { siblingIds: `No profile with ID ${sid}` });
+      for (const sid of added) {
+        if (!rows.has(sid)) throw badRequest(`Sibling (ID ${sid}) does not exist`, { siblingIds: `No profile with ID ${sid}` });
+        if (rows.get(sid).entity_type !== 'HUMAN') throw badRequest('A sibling must be a person', { siblingIds: 'Pick a person' });
+      }
       if (added.length) {
         const bad = new Set([...(await ancestorsOf(client, id)), ...(await descendantsOf(client, id))]);
         const hit = added.find((x) => bad.has(x));
@@ -335,7 +406,7 @@ export async function createProfile(data, viewer) {
     const { rows } = await client.query(
       `INSERT INTO profiles (${cols.join(', ')}) VALUES (${vals.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, vals);
     const id = rows[0].id;
-    if (data.spouseId) await setSpouse(client, id, data.spouseId);
+    if (data.spouses?.length) await syncSpouses(client, id, data.spouses);
     await syncRelatives(client, id, data, viewer);
     return id;
   });
@@ -359,9 +430,9 @@ export async function updateProfile(id, data, viewer) {
       changed.push(key);
     }
     await client.query(`UPDATE profiles SET ${sets.join(', ')} WHERE id = $1`, vals);
-    if (data.spouseId !== undefined) {
-      await setSpouse(client, id, data.spouseId);
-      changed.push('spouseId');
+    if (data.spouses !== undefined) {
+      await syncSpouses(client, id, data.spouses);
+      changed.push('spouses');
     }
     changed.push(...(await syncRelatives(client, id, data, viewer)));
     return { changed, previousName: current.name };

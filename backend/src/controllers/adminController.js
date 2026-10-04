@@ -1,12 +1,13 @@
 import { query, withTransaction } from '../db/pool.js';
 import { config } from '../config.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { badRequest, conflict, notFound } from '../utils/httpError.js';
+import { HttpError, badRequest, conflict, notFound } from '../utils/httpError.js';
 import { escapeLike } from '../utils/phone.js';
 import { hashPassword, generateTemporaryPassword } from '../utils/password.js';
 import { serializeUser } from '../services/userService.js';
 import { audit } from '../services/audit.js';
 import { getSettings, updateSettings, DEFAULTS } from '../services/settings.js';
+import { writeBackup, backupFileName } from '../services/backupService.js';
 
 const USER_SELECT = `SELECT u.id, u.email, u.username, u.display_name, u.role, u.is_active, u.must_change_password, u.profile_id,
   u.theme, u.preferences, u.last_login_at, u.created_at, u.approval_status, p.name AS profile_name
@@ -236,4 +237,17 @@ export const system = asyncHandler(async (_req, res) => {
     database: { version: v.rows[0].v.split(' on ')[0], sizeBytes: size.rows[0].bytes, tables: tables.rows.map((t) => ({ name: t.name, rows: t.rows, bytes: t.bytes })), migrations: mig.rows },
     config: { mailConfigured: Boolean(config.mail.resendApiKey), corsOrigins: config.cors.origins, siteUrl: config.siteUrl, poolMax: config.db.poolMax },
   });
+});
+
+// ---------------------------------------------------------------- backup
+export const downloadBackup = asyncHandler(async (req, res) => {
+  if (config.isServerless) {
+    // Serverless hosts cap duration and response size (Netlify: 10 s / 6 MB), so a big export cannot complete there.
+    const { rows } = await query('SELECT pg_database_size(current_database())::bigint AS bytes');
+    if (rows[0].bytes > 4 * 1024 * 1024) throw new HttpError(413, 'This database is too large to download through the serverless host. Run "npm run backup" on your computer instead.', { code: 'BACKUP_TOO_LARGE' });
+  }
+  const name = backupFileName();
+  await audit(req, 'system.backup', { entityType: 'system', summary: `Exported a full backup (${name})` });
+  res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+  try { await writeBackup(res); } catch (err) { console.error('[backup] failed:', err.message); res.destroy(err); }
 });
