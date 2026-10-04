@@ -1,4 +1,4 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { Badge, Card, ErrorState, LoadingBlock, PageHeader, Stat, cx } from '../../components/ui.jsx';
 import { useSite } from '../../context/AppContext.jsx';
 import { useFetch, useTitle } from '../../hooks/hooks.js';
@@ -20,8 +20,14 @@ function Overview() {
   const max = Math.max(1, ...daily.map((d) => d.users + d.profiles + d.contacts));
   return (
     <div className="space-y-6">
+      {t.pendingUsers > 0 && (
+        <Link to="/admin/users?approval=pending" className="flex items-center justify-between gap-3 rounded-2xl border border-accent/40 bg-accent-soft p-4 text-sm">
+          <span><b>{t.pendingUsers}</b> new {t.pendingUsers === 1 ? 'account is' : 'accounts are'} waiting for your approval.</span>
+          <span className="font-medium text-accent">Review requests →</span>
+        </Link>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Users" value={t.users} hint={`${t.admins} admin${t.admins === 1 ? '' : 's'} · ${t.inactiveUsers} inactive`} to="/admin/users" />
+        <Stat label="Users" value={t.users} hint={`${t.admins} admin${t.admins === 1 ? '' : 's'} · ${t.pendingUsers} pending · ${t.inactiveUsers} inactive`} to="/admin/users" />
         <Stat label="Profiles" value={t.profiles.toLocaleString()} hint={`${t.profilesWithPhoto} with photo · ${t.married} married`} to="/admin/profiles" />
         <Stat label="Contacts" value={t.contacts.toLocaleString()} hint={`${t.uniqueNumbers.toLocaleString()} unique numbers`} to="/admin/contacts" />
         <Stat label="Audit events" value={t.auditEvents.toLocaleString()} hint={`${t.posts} notes`} to="/admin/audit" />

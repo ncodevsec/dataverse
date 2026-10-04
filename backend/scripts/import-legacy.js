@@ -112,7 +112,7 @@ try {
     // ---------- profiles (relationships are applied in a second pass so insertion order never matters)
     const cols = ['id', 'name', 'nickname', 'email', 'phone', 'gender', 'marital_status', 'dob', 'blood_group', 'religion', 'political_view',
       'nid', 'occupation', 'education_level', 'education_group', 'lineage', 'present_street', 'present_city', 'street', 'union_name',
-      'sub_district', 'district', 'state', 'zip', 'country', 'facebook', 'instagram', 'tiktok', 'about', 'tags'];
+      'sub_district', 'district', 'state', 'zip', 'country', 'social_links', 'about', 'tags'];
     const rows = legacyProfiles.map((r) => {
       const id = Number(r.id);
       const email = text(r.email)?.toLowerCase();
@@ -128,7 +128,8 @@ try {
         text(r.religion), text(r.politicalView), text(r.nid), text(r.occupation), text(r.eduLevel), text(r.eduGroup),
         lineageFrom(r.lineage), text(r.presentStreet), text(r.presentCity), text(r.street), text(r._union), text(r.subDistrict),
         text(r.district), text(r.state), r.zip && r.zip !== '0' ? String(r.zip) : null, text(r.country),
-        text(r.fb), text(r.insta), text(r.tiktok), text(r.about), listFrom(r.tags),
+        JSON.stringify(Object.fromEntries([['facebook', text(r.fb)], ['instagram', text(r.insta)], ['tiktok', text(r.tiktok)]].filter(([, v]) => v).map(([k, v]) => [k, [v]]))),
+        text(r.about), listFrom(r.tags),
       ];
     });
     report.profiles = await bulkInsert(client, 'profiles', cols, rows, { overriding: true });

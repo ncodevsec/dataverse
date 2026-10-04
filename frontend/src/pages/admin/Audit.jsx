@@ -13,7 +13,7 @@ export default function Audit() {
   useEffect(() => setPage(1), [dq, action]);
   const actions = useFetch(() => api.get('/admin/audit-logs/actions'), []);
   const { data, error, loading, reload } = useFetch(() => api.get('/admin/audit-logs', { q: dq, action, page, limit: 30 }), [dq, action, page]);
-  const danger = (a) => /delete|deactivate|password_reset|role_change/.test(a);
+  const danger = (a) => /delete|deactivate|reject|password_reset|role_change/.test(a);
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">

@@ -24,10 +24,10 @@ export function timeAgo(value) {
   return 'just now';
 }
 
-export function age(dob) {
+export function age(dob, until) {
   if (!dob) return null;
   const b = new Date(`${dob}T00:00:00`);
-  const t = new Date();
+  const t = until ? new Date(`${until}T00:00:00`) : new Date();
   let a = t.getFullYear() - b.getFullYear();
   if (t < new Date(t.getFullYear(), b.getMonth(), b.getDate())) a--;
   return a >= 0 ? a : null;

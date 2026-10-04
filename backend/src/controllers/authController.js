@@ -1,6 +1,6 @@
 import { query } from '../db/pool.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { conflict, forbidden, unauthorized, badRequest } from '../utils/httpError.js';
+import { HttpError, conflict, forbidden, unauthorized, badRequest } from '../utils/httpError.js';
 import { hashPassword, verifyPassword, DUMMY_HASH, randomToken, sha256 } from '../utils/password.js';
 import { signToken, setSessionCookie, clearSessionCookie } from '../utils/jwt.js';
 import { serializeUser, USER_COLUMNS } from '../services/userService.js';
@@ -19,15 +19,14 @@ export const register = asyncHandler(async (req, res) => {
   if (!settings.registration_enabled) throw forbidden('Registration is currently disabled');
   const { displayName, username, email, password } = req.valid.body;
   const hash = await hashPassword(password);
-  // Role is NEVER taken from the request: public sign-ups are always USER.
-  const { rows } = await query(
-    `INSERT INTO users (email, username, display_name, password_hash, role, theme)
-     VALUES ($1, $2, $3, $4, 'USER', $5) RETURNING ${USER_COLUMNS}`,
+  // Role is NEVER taken from the request: public sign-ups are always USER, and always start PENDING.
+  // No session is issued: the account cannot see any data until an administrator approves it.
+  await query(
+    `INSERT INTO users (email, username, display_name, password_hash, role, theme, approval_status)
+     VALUES ($1, $2, $3, $4, 'USER', $5, 'PENDING')`,
     [email, username, displayName, hash, settings.default_theme],
   );
-  const user = rows[0];
-  const token = startSession(res, user);
-  res.status(201).json({ user: serializeUser(user), token });
+  res.status(201).json({ pending: true, message: 'Your account was created and is waiting for administrator approval. You will be able to sign in once it is approved.' });
 });
 
 export const login = asyncHandler(async (req, res) => {
@@ -41,6 +40,9 @@ export const login = asyncHandler(async (req, res) => {
   const ok = await verifyPassword(password, found?.password_hash ?? DUMMY_HASH);
   if (!found || !ok) throw unauthorized('Incorrect email/username or password');
   if (!found.is_active) throw forbidden('This account has been deactivated. Contact an administrator.');
+  // Status is only revealed after the password was verified, so it cannot be used to probe for accounts.
+  if (found.approval_status === 'PENDING') throw new HttpError(403, 'Your account is waiting for administrator approval.', { code: 'ACCOUNT_PENDING' });
+  if (found.approval_status !== 'APPROVED') throw new HttpError(403, 'Your registration was not approved. Contact an administrator.', { code: 'ACCOUNT_REJECTED' });
 
   await query('UPDATE users SET last_login_at = now() WHERE id = $1', [found.id]);
   const token = startSession(res, found);
@@ -59,7 +61,7 @@ export const me = (req, res) => {
 
 export const forgotPassword = asyncHandler(async (req, res) => {
   const { email } = req.valid.body;
-  const { rows } = await query('SELECT id, email, display_name FROM users WHERE lower(email) = $1 AND is_active', [email]);
+  const { rows } = await query(`SELECT id, email, display_name FROM users WHERE lower(email) = $1 AND is_active AND approval_status = 'APPROVED'`, [email]);
   const user = rows[0];
   if (user) {
     const token = randomToken();
@@ -88,7 +90,7 @@ export const resetPassword = asyncHandler(async (req, res) => {
   const { rows } = await query(
     `UPDATE users SET password_hash = $2, reset_token_hash = NULL, reset_token_expires_at = NULL,
             must_change_password = false, token_version = token_version + 1
-      WHERE reset_token_hash = $1 AND reset_token_expires_at > now() AND is_active
+      WHERE reset_token_hash = $1 AND reset_token_expires_at > now() AND is_active AND approval_status = 'APPROVED'
       RETURNING id, email, display_name`,
     [sha256(token), hash],
   );

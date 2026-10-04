@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../db/pool.js';
-import { badRequest, conflict, notFound } from '../utils/httpError.js';
+import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike } from '../utils/phone.js';
+import { SOCIAL_NETWORKS } from '../utils/schemas.js';
 
 // API field -> column. spouseId is handled separately because the relationship is symmetric.
 export const FIELD_COLUMNS = {
@@ -9,7 +10,7 @@ export const FIELD_COLUMNS = {
   occupation: 'occupation', educationLevel: 'education_level', educationGroup: 'education_group', lineage: 'lineage',
   presentStreet: 'present_street', presentCity: 'present_city', street: 'street', unionName: 'union_name',
   subDistrict: 'sub_district', district: 'district', state: 'state', zip: 'zip', country: 'country',
-  facebook: 'facebook', instagram: 'instagram', tiktok: 'tiktok', about: 'about', tags: 'tags',
+  socialLinks: 'social_links', about: 'about', tags: 'tags', dateOfDeath: 'date_of_death',
   fatherId: 'father_id', motherId: 'mother_id',
 };
 
@@ -23,6 +24,7 @@ export const toSummary = (r) => ({
   gender: r.gender,
   maritalStatus: r.marital_status,
   dob: r.dob,
+  dateOfDeath: r.date_of_death,
   bloodGroup: r.blood_group,
   occupation: r.occupation,
   district: r.district,
@@ -36,7 +38,7 @@ export const toSummary = (r) => ({
   photoUrl: photoUrl(r),
 });
 
-export const SUMMARY_COLUMNS = `p.id, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.blood_group, p.occupation,
+export const SUMMARY_COLUMNS = `p.id, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
   p.district, p.present_city, p.phone, p.lineage, p.tags, p.father_id, p.mother_id, p.spouse_id, p.photo_updated_at`;
 
 // ---------------------------------------------------------------- permissions
@@ -45,6 +47,8 @@ export const canEditProfile = (u, p) => !!u && (isAdmin(u) || p.created_by === u
 export const canDeleteProfile = (u, p) => !!u && (isAdmin(u) || p.created_by === u.id);
 /** NID is sensitive: only admins, the person it belongs to, and whoever created the record may see it. */
 const canSeeNid = (u, p) => !!u && (isAdmin(u) || p.created_by === u.id || u.profile_id === p.id);
+
+const normalizeSocial = (v) => Object.fromEntries(SOCIAL_NETWORKS.map((n) => [n, Array.isArray(v?.[n]) ? v[n] : []]));
 
 export function toFull(r, viewer) {
   const nidVisible = canSeeNid(viewer, r);
@@ -64,9 +68,7 @@ export function toFull(r, viewer) {
     state: r.state,
     zip: r.zip,
     country: r.country,
-    facebook: r.facebook,
-    instagram: r.instagram,
-    tiktok: r.tiktok,
+    socialLinks: normalizeSocial(r.social_links),
     about: r.about,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -209,35 +211,150 @@ async function setSpouse(client, id, spouseId) {
      WHERE id = $1`, [id, spouseId ?? null]);
 }
 
+function validateDates(current, data) {
+  const dob = data.dob !== undefined ? data.dob : current?.dob;
+  const dod = data.dateOfDeath !== undefined ? data.dateOfDeath : current?.date_of_death;
+  if (dob && dod && dod < dob) throw badRequest('Date of death cannot be before date of birth', { dateOfDeath: 'Cannot be before the date of birth' });
+}
+
+const idsOf = (rows) => rows.map((r) => r.id);
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+async function ancestorsOf(client, id) {
+  const { rows } = await client.query(
+    `WITH RECURSIVE a AS (
+       SELECT id, father_id, mother_id FROM profiles WHERE id = $1
+       UNION SELECT p.id, p.father_id, p.mother_id FROM a JOIN profiles p ON p.id = a.father_id OR p.id = a.mother_id
+     ) SELECT id FROM a WHERE id <> $1`, [id]);
+  return idsOf(rows);
+}
+async function descendantsOf(client, id) {
+  const { rows } = await client.query(
+    `WITH RECURSIVE d AS (
+       SELECT id FROM profiles WHERE father_id = $1 OR mother_id = $1
+       UNION SELECT c.id FROM d JOIN profiles c ON c.father_id = d.id OR c.mother_id = d.id
+     ) SELECT id FROM d`, [id]);
+  return idsOf(rows);
+}
+
+/**
+ * Makes the person's children / siblings match the given lists by editing the *other* profiles' parent links.
+ *  - Filling an empty parent slot on someone else's profile is allowed for any editor of this profile.
+ *  - Replacing or removing an existing link on someone else's profile requires edit rights on that profile.
+ *  - Loops (an ancestor becoming a child/sibling, etc.) are rejected.
+ */
+async function syncRelatives(client, id, data, viewer) {
+  const wantsKids = Array.isArray(data.childIds);
+  const wantsSibs = Array.isArray(data.siblingIds);
+  if (!wantsKids && !wantsSibs) return [];
+  const self = await getProfileRow(id, client);
+  const changed = [];
+  const loadMany = async (ids) => new Map((await client.query('SELECT * FROM profiles WHERE id = ANY($1::int[]) FOR UPDATE', [ids])).rows.map((r) => [r.id, r]));
+  const mayEdit = (row) => canEditProfile(viewer, row);
+
+  if (wantsKids) {
+    const desired = data.childIds;
+    const current = idsOf((await client.query('SELECT id FROM profiles WHERE father_id = $1 OR mother_id = $1', [id])).rows);
+    if (!sameSet(desired, current)) {
+      const col = self.gender === 'MALE' ? 'father_id' : self.gender === 'FEMALE' ? 'mother_id' : null;
+      if (!col) throw badRequest('Set this person\'s gender before linking children', { childIds: 'Gender is required to link children' });
+      if (desired.includes(id)) throw badRequest('A person cannot be their own child', { childIds: 'Invalid selection' });
+      const added = desired.filter((x) => !current.includes(x));
+      const removed = current.filter((x) => !desired.includes(x));
+      const rows = await loadMany([...added, ...removed]);
+      for (const cid of added) if (!rows.has(cid)) throw badRequest(`Child (ID ${cid}) does not exist`, { childIds: `No profile with ID ${cid}` });
+      if (added.length) {
+        const bad = new Set(await ancestorsOf(client, id));
+        const hit = added.find((x) => bad.has(x));
+        if (hit) throw conflict('An ancestor cannot also be a child', { childIds: `Profile ${hit} is an ancestor of this person` });
+      }
+      for (const cid of added) {
+        const row = rows.get(cid);
+        if (row[col] != null && row[col] !== id && !mayEdit(row)) throw forbidden(`"${row.name}" already has a ${col === 'father_id' ? 'father' : 'mother'} recorded and you cannot edit that profile`);
+        await client.query(`UPDATE profiles SET ${col} = $2, updated_by = $3 WHERE id = $1`, [cid, id, viewer.id]);
+      }
+      for (const cid of removed) {
+        const row = rows.get(cid);
+        if (!row) continue;
+        if (!mayEdit(row)) throw forbidden(`You cannot unlink "${row.name}" because you cannot edit that profile`);
+        await client.query('UPDATE profiles SET father_id = CASE WHEN father_id = $2 THEN NULL ELSE father_id END, mother_id = CASE WHEN mother_id = $2 THEN NULL ELSE mother_id END, updated_by = $3 WHERE id = $1', [cid, id, viewer.id]);
+      }
+      changed.push('childIds');
+    }
+  }
+
+  if (wantsSibs) {
+    const me = await getProfileRow(id, client); // re-read: parents may have just changed
+    const desired = data.siblingIds;
+    const current = idsOf((await client.query(
+      `SELECT id FROM profiles WHERE id <> $1 AND ((father_id IS NOT NULL AND father_id = $2) OR (mother_id IS NOT NULL AND mother_id = $3))`, [id, me.father_id, me.mother_id])).rows);
+    if (!sameSet(desired, current)) {
+      if (desired.includes(id)) throw badRequest('A person cannot be their own sibling', { siblingIds: 'Invalid selection' });
+      const added = desired.filter((x) => !current.includes(x));
+      const removed = current.filter((x) => !desired.includes(x));
+      if (added.length && !me.father_id && !me.mother_id) throw badRequest('Link a father or mother first; siblings are people who share a parent', { siblingIds: 'This person has no parents linked' });
+      const rows = await loadMany([...added, ...removed]);
+      for (const sid of added) if (!rows.has(sid)) throw badRequest(`Sibling (ID ${sid}) does not exist`, { siblingIds: `No profile with ID ${sid}` });
+      if (added.length) {
+        const bad = new Set([...(await ancestorsOf(client, id)), ...(await descendantsOf(client, id))]);
+        const hit = added.find((x) => bad.has(x));
+        if (hit) throw conflict('An ancestor or descendant cannot also be a sibling', { siblingIds: `Profile ${hit} is an ancestor or descendant of this person` });
+      }
+      for (const sid of added) {
+        const row = rows.get(sid);
+        const wantF = me.father_id; const wantM = me.mother_id;
+        const clashes = (wantF && row.father_id != null && row.father_id !== wantF) || (wantM && row.mother_id != null && row.mother_id !== wantM);
+        if (clashes && !mayEdit(row)) throw forbidden(`"${row.name}" has different parents recorded and you cannot edit that profile`);
+        await client.query('UPDATE profiles SET father_id = COALESCE($2, father_id), mother_id = COALESCE($3, mother_id), updated_by = $4 WHERE id = $1', [sid, wantF, wantM, viewer.id]);
+      }
+      for (const sid of removed) {
+        const row = rows.get(sid);
+        if (!row) continue;
+        if (!mayEdit(row)) throw forbidden(`You cannot unlink "${row.name}" because you cannot edit that profile`);
+        await client.query(
+          `UPDATE profiles SET father_id = CASE WHEN father_id = $2 THEN NULL ELSE father_id END,
+                               mother_id = CASE WHEN mother_id = $3 THEN NULL ELSE mother_id END, updated_by = $4 WHERE id = $1`,
+          [sid, me.father_id, me.mother_id, viewer.id]);
+      }
+      changed.push('siblingIds');
+    }
+  }
+  return changed;
+}
+
 // ---------------------------------------------------------------- writes
-export async function createProfile(data, userId) {
+export async function createProfile(data, viewer) {
   return withTransaction(async (client) => {
     await validateRelations(client, null, null, data);
+    validateDates(null, data);
     const cols = ['created_by', 'updated_by'];
-    const vals = [userId, userId];
+    const vals = [viewer.id, viewer.id];
     for (const [key, col] of Object.entries(FIELD_COLUMNS)) {
-      if (data[key] !== undefined) { cols.push(col); vals.push(data[key]); }
+      if (data[key] === undefined) continue;
+      cols.push(col); vals.push(key === 'socialLinks' ? JSON.stringify(data[key]) : data[key]);
     }
     const { rows } = await client.query(
       `INSERT INTO profiles (${cols.join(', ')}) VALUES (${vals.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, vals);
     const id = rows[0].id;
     if (data.spouseId) await setSpouse(client, id, data.spouseId);
+    await syncRelatives(client, id, data, viewer);
     return id;
   });
 }
 
-export async function updateProfile(id, data, userId) {
+export async function updateProfile(id, data, viewer) {
+  const userId = viewer.id;
   return withTransaction(async (client) => {
     const current = (await client.query('SELECT * FROM profiles WHERE id = $1 FOR UPDATE', [id])).rows[0];
     if (!current) throw notFound('Profile not found');
     await validateRelations(client, id, current, data);
+    validateDates(current, data);
 
     const sets = ['updated_by = $2'];
     const vals = [id, userId];
     const changed = [];
     for (const [key, col] of Object.entries(FIELD_COLUMNS)) {
       if (data[key] === undefined) continue;
-      vals.push(data[key]);
+      vals.push(key === 'socialLinks' ? JSON.stringify(data[key]) : data[key]);
       sets.push(`${col} = $${vals.length}`);
       changed.push(key);
     }
@@ -246,6 +363,7 @@ export async function updateProfile(id, data, userId) {
       await setSpouse(client, id, data.spouseId);
       changed.push('spouseId');
     }
+    changed.push(...(await syncRelatives(client, id, data, viewer)));
     return { changed, previousName: current.name };
   });
 }

@@ -43,6 +43,7 @@ const PAGES = [
   ['/profiles/59', /Personal information/],
   ['/profiles/59/edit', /Save changes/],
   ['/profiles/new', /Create profile/],
+  ['/posts', /New post/],
   ['/shekor', /Pick a person to see/],
   ['/shekor/59', /বংশানুক্রম/],
   ['/caller-id', /Add contact/],

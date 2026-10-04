@@ -61,7 +61,7 @@ export function AuthProvider({ children }) {
   const value = useMemo(() => ({
     user, loading, isAdmin: user?.role === 'ADMIN', setUser,
     login: async (identifier, password) => { const d = await api.post('/auth/login', { identifier, password }); setUser(d.user); return d.user; },
-    register: async (payload) => { const d = await api.post('/auth/register', payload); setUser(d.user); return d.user; },
+    register: (payload) => api.post('/auth/register', payload), // accounts start PENDING: no session until an admin approves
     logout: async () => { try { await api.post('/auth/logout'); } finally { setUser(null); } },
   }), [user, loading]);
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

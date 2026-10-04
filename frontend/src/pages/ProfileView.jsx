@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
-import { Avatar, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, LinkButton, LoadingBlock, Modal, TextArea, TextField, SelectField, apiErrors } from '../components/ui.jsx';
+import { PostCard, usePostDialogs } from '../components/PostViews.jsx';
+import { Avatar, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, LinkButton, LoadingBlock } from '../components/ui.jsx';
 import { useAuth, useSite, useToast } from '../context/AppContext.jsx';
 import { useFetch, useTitle } from '../hooks/hooks.js';
 import { api } from '../lib/api.js';
@@ -23,55 +24,20 @@ function RelativeLink({ p, role }) {
   );
 }
 
-function Notes({ profileId, canEdit }) {
-  const toast = useToast();
-  const { data, error, loading, reload } = useFetch(() => api.get(`/profiles/${profileId}/posts`), [profileId]);
-  const [editing, setEditing] = useState(null); // null | {} (new) | post
-  const [form, setForm] = useState({ title: '', content: '', status: 'published' });
-  const [errors, setErrors] = useState({});
-  const [busy, setBusy] = useState(false);
-  const [del, setDel] = useState(null);
-
-  const open = (post) => { setEditing(post || {}); setForm(post ? { title: post.title, content: post.content, status: post.status } : { title: '', content: '', status: 'published' }); setErrors({}); };
-  async function save() {
-    setBusy(true); setErrors({});
-    try {
-      if (editing.id) await api.patch(`/posts/${editing.id}`, form); else await api.post(`/profiles/${profileId}/posts`, form);
-      toast.success(editing.id ? 'Note updated' : 'Note added'); setEditing(null); reload();
-    } catch (e) { setErrors(apiErrors(e)); toast.error(e.message); } finally { setBusy(false); }
-  }
-  async function remove() {
-    setBusy(true);
-    try { await api.del(`/posts/${del.id}`); toast.success('Note deleted'); setDel(null); reload(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
-  }
+function Posts({ profile }) {
+  const { data, error, loading, reload } = useFetch(() => api.get(`/profiles/${profile.id}/posts`), [profile.id]);
+  const { openNew, openEdit, askDelete, dialogs } = usePostDialogs({ reload, profile: { id: profile.id, name: profile.name } });
   const items = data?.items || [];
-  if (!canEdit && !loading && !items.length) return null;
   return (
     <Card className="p-5">
-      <div className="mb-3 flex items-center justify-between"><h2 className="text-base font-semibold">Notes</h2>{canEdit && <Button size="sm" icon="plus" onClick={() => open()}>Add note</Button>}</div>
-      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock rows={1} /> : items.length === 0 ? <p className="text-sm text-muted">No notes yet.</p> : (
-        <ul className="space-y-4">
-          {items.map((n) => (
-            <li key={n.id} className="rounded-xl border border-line p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div><h3 className="font-medium">{n.title} {n.status !== 'published' && <Badge tone="warn">{n.status}</Badge>}</h3><p className="text-xs text-muted">{fmtDateTime(n.createdAt)}</p></div>
-                {canEdit && <div className="flex"><IconButton icon="edit" label="Edit note" onClick={() => open(n)} /><IconButton icon="trash" label="Delete note" onClick={() => setDel(n)} /></div>}
-              </div>
-              {/* rendered as plain text (React escapes it) - never as HTML */}
-              <p className="mt-2 whitespace-pre-wrap text-sm">{n.content}</p>
-            </li>
-          ))}
-        </ul>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Posts</h2>
+        <div className="flex items-center gap-2"><Link to="/posts" className="text-sm text-accent hover:underline">All posts</Link><Button size="sm" icon="plus" onClick={openNew}>New post</Button></div>
+      </div>
+      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock rows={1} /> : items.length === 0 ? <p className="text-sm text-muted">No posts about {profile.name} yet.</p> : (
+        <div className="space-y-4">{items.map((n) => <PostCard key={n.id} post={n} showProfile={false} onEdit={openEdit} onDelete={askDelete} />)}</div>
       )}
-      <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? 'Edit note' : 'New note'}
-        footer={<><Button onClick={() => setEditing(null)}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>Save note</Button></>}>
-        <div className="space-y-3">
-          <TextField label="Title" required value={form.title} error={errors.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          <TextArea label="Content" rows={6} value={form.content} error={errors.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
-          <SelectField label="Visibility" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}><option value="published">Published</option><option value="draft">Draft (only editors see it)</option><option value="archived">Archived</option></SelectField>
-        </div>
-      </Modal>
-      <ConfirmDialog open={!!del} title="Delete this note?" message={`“${del?.title}” will be permanently removed.`} confirmLabel="Delete note" danger loading={busy} onConfirm={remove} onClose={() => setDel(null)} />
+      {dialogs}
     </Card>
   );
 }
@@ -91,13 +57,14 @@ export default function ProfileView() {
   if (loading && !data) return <LoadingBlock rows={5} />;
   const { profile: p, family: f } = data;
   const df = user.preferences?.dateFormat || 'dmy';
-  const years = age(p.dob);
+  const years = age(p.dob, p.dateOfDeath);
 
   async function remove() {
     setBusy(true);
     try { await api.del(`/profiles/${p.id}`); toast.success(`Deleted ${p.name}`); navigate('/profiles', { replace: true }); } catch (e) { toast.error(e.message); setBusy(false); setConfirm(false); }
   }
-  const social = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok']].filter(([k]) => p[k]);
+  const NETWORKS = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok']];
+  const social = NETWORKS.flatMap(([k, label]) => (p.socialLinks?.[k] || []).map((v, i, all) => ({ k, label: all.length > 1 ? `${label} ${i + 1}` : label, value: v })));
   const address = (...parts) => parts.filter(Boolean).join(', ');
   const hasFamily = f.father || f.mother || f.spouse || f.children.length || f.siblings.length;
 
@@ -115,6 +82,7 @@ export default function ProfileView() {
             {p.gender && <Badge>{GENDER[p.gender]}</Badge>}
             {p.maritalStatus && <Badge>{MARITAL[p.maritalStatus]}</Badge>}
             {p.bloodGroup && <Badge tone="accent">{p.bloodGroup}</Badge>}
+            {p.dateOfDeath && <Badge>Deceased</Badge>}
             {p.tags.map((t) => <Link key={t} to={`/profiles?tag=${encodeURIComponent(t)}`}><Badge>{t}</Badge></Link>)}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -127,7 +95,8 @@ export default function ProfileView() {
 
       <div className="grid gap-5 lg:grid-cols-2">
         <Section title="Personal information">
-          <Row label="Date of birth">{p.dob ? `${fmtDate(p.dob, df)}${years !== null ? ` (${years} years)` : ''}` : null}</Row>
+          <Row label="Date of birth">{p.dob ? `${fmtDate(p.dob, df)}${years !== null && !p.dateOfDeath ? ` (${years} years)` : ''}` : null}</Row>
+          <Row label="Date of death">{p.dateOfDeath ? `${fmtDate(p.dateOfDeath, df)}${years !== null ? ` (aged ${years})` : ''}` : null}</Row>
           <Row label="Religion">{p.religion}</Row>
           <Row label="Political view">{p.politicalView}</Row>
           <Row label="Lineage / house">{p.lineage}</Row>
@@ -136,7 +105,7 @@ export default function ProfileView() {
         <Section title="Contact">
           <Row label="Phone">{p.phone && <a className="text-accent hover:underline" href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}>{p.phone}</a>}</Row>
           <Row label="Email">{p.email && <a className="text-accent hover:underline" href={`mailto:${p.email}`}>{p.email}</a>}</Row>
-          {social.map(([k, label]) => { const href = safeUrl(p[k], k); return <Row key={k} label={label}>{href ? <a className="inline-flex items-center gap-1 break-all text-accent hover:underline" href={href} target="_blank" rel="noopener noreferrer nofollow">{p[k].replace(/^https?:\/\/(www\.)?/, '')}<Icon name="external" className="h-3 w-3" /></a> : p[k]}</Row>; })}
+          {social.map(({ k, label, value }, i) => { const href = safeUrl(value, k); return <Row key={`${k}${i}`} label={label}>{href ? <a className="inline-flex items-center gap-1 break-all text-accent hover:underline" href={href} target="_blank" rel="noopener noreferrer nofollow">{value.replace(/^https?:\/\/(www\.)?/, '')}<Icon name="external" className="h-3 w-3" /></a> : value}</Row>; })}
         </Section>
         <Section title="Address">
           <Row label="Present">{address(p.presentStreet, p.presentCity)}</Row>
@@ -169,7 +138,7 @@ export default function ProfileView() {
         )}
       </Card>
 
-      <Notes profileId={p.id} canEdit={p.permissions.canEdit} />
+      <Posts profile={p} />
       <p className="text-xs text-muted">Last updated {fmtDateTime(p.updatedAt)}</p>
 
       <ConfirmDialog open={confirm} title={`Delete ${p.name}?`} danger confirmLabel="Delete profile" loading={busy} onConfirm={remove} onClose={() => setConfirm(false)}

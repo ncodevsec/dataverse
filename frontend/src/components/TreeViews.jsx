@@ -4,6 +4,7 @@ import Icon from './Icon.jsx';
 import { Avatar, cx } from './ui.jsx';
 
 const birthYear = (p) => (p?.dob ? p.dob.slice(0, 4) : null);
+const life = (p) => (p?.dob || p?.dateOfDeath ? `${birthYear(p) ? `b. ${birthYear(p)}` : ''}${p.dateOfDeath ? `${birthYear(p) ? ' – ' : ''}d. ${p.dateOfDeath.slice(0, 4)}` : ''}` : null);
 
 /** One person: the name opens their profile, the small tree icon re-centres Shekor on them. */
 export function Person({ p, role, focus, className }) {
@@ -14,7 +15,7 @@ export function Person({ p, role, focus, className }) {
         <Avatar src={p.photoUrl} name={p.name} size="sm" />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium leading-tight">{p.name}</span>
-          <span className="block truncate text-xs text-muted">{[role, birthYear(p) && `b. ${birthYear(p)}`].filter(Boolean).join(' · ') || `#${p.id}`}</span>
+          <span className="block truncate text-xs text-muted">{[role, life(p)].filter(Boolean).join(' · ') || `#${p.id}`}</span>
         </span>
       </Link>
       {!focus && <Link to={`/shekor/${p.id}`} className="shrink-0 rounded-md p-1.5 text-muted hover:bg-surface-2 hover:text-accent" aria-label={`Show ${p.name}'s family tree`} title="Show this person's tree"><Icon name="tree" className="h-4 w-4" /></Link>}

@@ -76,6 +76,7 @@ export const adminResetPasswordSchema = z.object({ password: passwordField.optio
 
 export const userListQuery = z.object({
   q: z.string().trim().max(100).optional(),
+  approval: z.enum(['pending', 'approved', 'rejected']).optional(),
   role: z.enum(['USER', 'ADMIN']).optional(),
   status: z.enum(['active', 'inactive']).optional(),
   ...pageParams,
@@ -97,6 +98,21 @@ const tagsField = z.preprocess(
   z.array(z.string().trim().min(1).max(40)).max(30).optional().transform((a) => (a ? [...new Set(a)] : a)),
 );
 
+// Several accounts per network: { facebook: ['url or handle', ...], instagram: [...], tiktok: [...] }
+export const SOCIAL_NETWORKS = ['facebook', 'instagram', 'tiktok'];
+const socialList = z.preprocess(
+  (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean))] : v),
+  z.array(z.string().max(255)).max(10),
+);
+const socialLinksField = z.preprocess(
+  (v) => (v === null ? {} : v),
+  z.object(Object.fromEntries(SOCIAL_NETWORKS.map((n) => [n, socialList.optional()]))).strict().optional(),
+);
+const idList = z.preprocess(
+  (v) => (Array.isArray(v) ? [...new Set(v)] : v),
+  z.array(z.number().int().positive().max(2_147_483_647)).max(50).optional(),
+);
+
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export const profileShape = {
@@ -107,6 +123,7 @@ export const profileShape = {
   gender: optEnum(['MALE', 'FEMALE']),
   maritalStatus: optEnum(['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED']),
   dob: dateField,
+  dateOfDeath: dateField,
   bloodGroup: optEnum(BLOOD_GROUPS),
   religion: optText(120),
   politicalView: optText(255),
@@ -124,14 +141,14 @@ export const profileShape = {
   state: optText(127),
   zip: optText(16),
   country: optText(127),
-  facebook: optText(255),
-  instagram: optText(255),
-  tiktok: optText(255),
+  socialLinks: socialLinksField,
   about: optText(10_000),
   tags: tagsField,
   fatherId: optId,
   motherId: optId,
   spouseId: optId,
+  childIds: idList,
+  siblingIds: idList,
 };
 
 export const profileCreateSchema = z.object(profileShape).strict();
@@ -150,12 +167,26 @@ export const profileListQuery = z.object({
 
 export const optionsQuery = z.object({ q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
 
+// Post tags: lower-case, no leading '#', max 10, so "#Family" and "family" are the same tag.
+const postTagsField = z.preprocess(
+  (v) => (typeof v === 'string' ? v.split(',') : v),
+  z.array(z.string().trim().transform((t) => t.replace(/^#+/, '').toLowerCase()).pipe(z.string().min(1).max(40))).max(10).optional()
+    .transform((a) => (a ? [...new Set(a)] : a)),
+);
 export const postSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(200),
   content: z.string().max(20_000).default(''),
   status: z.enum(['published', 'draft', 'archived']).default('published'),
-  tags: tagsField,
+  tags: postTagsField,
 }).strict();
+export const postCreateSchema = postSchema.extend({ profileId: z.coerce.number().int().positive().max(2_147_483_647) }).strict();
+export const postListQuery = z.object({
+  q: z.string().trim().max(100).optional(),
+  tag: z.string().trim().toLowerCase().max(40).optional(),
+  profileId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
+  mine: z.enum(['1', 'true']).optional(),
+  ...pageParams,
+});
 export const postUpdateSchema = postSchema.partial().strict();
 
 // ---------- tree ----------

@@ -17,7 +17,8 @@ const { getPool, closePool, query } = await import('../src/db/pool.js');
 const { bootstrapAdmin } = await import('../src/services/bootstrapAdmin.js');
 
 let server; let base;
-const migration = fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../database/migrations/001_init.sql'), 'utf8');
+const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../database/migrations');
+const migration = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort().map((f) => fs.readFileSync(path.join(migrationsDir, f), 'utf8')).join('\n');
 
 /** minimal HTTP client with a per-user cookie jar */
 function client() {
@@ -37,6 +38,12 @@ function client() {
 }
 const PW = 'correct-horse-battery';
 let admin; let alice; let bob;
+/** Sign-ups start PENDING; this approves one through the real admin endpoint. */
+async function approve(username) {
+  const { rows } = await query('SELECT id FROM users WHERE username = $1', [username]);
+  const r = await admin.post(`/admin/users/${rows[0].id}/approve`);
+  assert.equal(r.status, 200);
+}
 
 before(async () => {
   const pool = getPool();
@@ -49,6 +56,9 @@ before(async () => {
   assert.equal((await admin.post('/auth/login', { identifier: 'root', password: PW })).status, 200);
   assert.equal((await alice.post('/auth/register', { displayName: 'Alice', username: 'alice', email: 'alice@test.dev', password: PW })).status, 201);
   assert.equal((await bob.post('/auth/register', { displayName: 'Bob', username: 'bob', email: 'bob@test.dev', password: PW })).status, 201);
+  await approve('alice'); await approve('bob');
+  assert.equal((await alice.post('/auth/login', { identifier: 'alice', password: PW })).status, 200);
+  assert.equal((await bob.post('/auth/login', { identifier: 'bob', password: PW })).status, 200);
 });
 after(async () => { server?.close(); await closePool(); });
 
@@ -204,6 +214,8 @@ test('admin: create user (temp password), role change, self-protection, last-adm
 test('sessions: password change and deactivation invalidate existing sessions immediately', async () => {
   const u = client();
   await u.post('/auth/register', { displayName: 'Dan', username: 'dan', email: 'dan@test.dev', password: PW });
+  await approve('dan');
+  assert.equal((await u.post('/auth/login', { identifier: 'dan', password: PW })).status, 200);
   const stolen = client(); stolen.cookie = u.cookie;
   assert.equal((await stolen.get('/auth/me')).status, 200);
   assert.equal((await u.put('/me/password', { currentPassword: 'wrong-password-123', newPassword: 'another-long-password' })).status, 400);
@@ -245,4 +257,148 @@ test('rate limiting: repeated failed logins are throttled', async () => {
   const c = client(); let last;
   for (let i = 0; i < 10; i++) last = await c.post('/auth/login', { identifier: 'ratelimited-user', password: 'nope-nope-nope' });
   assert.equal(last.status, 429);
+});
+
+// ------------------------------------------------------------------ new features
+test('approval: sign-ups are PENDING, get no session, see nothing, and need an admin to approve', async () => {
+  const c = client();
+  const reg = await c.post('/auth/register', { displayName: 'Pat', username: 'pat', email: 'pat@test.dev', password: PW });
+  assert.equal(reg.status, 201);
+  assert.equal(reg.data.pending, true);
+  assert.equal(c.cookie, '', 'no session cookie is issued at registration');
+  assert.equal((await c.get('/profiles')).status, 401);
+
+  const wrong = await client().post('/auth/login', { identifier: 'pat', password: 'wrong-password-123' });
+  assert.equal(wrong.status, 401, 'wrong password never reveals the pending status');
+  const pending = await c.post('/auth/login', { identifier: 'pat', password: PW });
+  assert.equal(pending.status, 403);
+  assert.equal(pending.data.error.code, 'ACCOUNT_PENDING');
+  assert.equal(c.cookie, '');
+
+  // a pending account that somehow holds a valid token is still anonymous
+  const { rows } = await query("SELECT id FROM users WHERE username = 'pat'");
+  const { signToken } = await import('../src/utils/jwt.js');
+  const forged = client(); forged.cookie = `dv_session=${signToken({ id: rows[0].id, token_version: 0 })}`;
+  assert.equal((await forged.get('/auth/me')).status, 401);
+
+  assert.equal((await alice.post(`/admin/users/${rows[0].id}/approve`)).status, 403, 'members cannot approve');
+  const list = (await admin.get('/admin/users?approval=pending')).data;
+  assert.ok(list.items.some((u) => u.username === 'pat' && u.approvalStatus === 'PENDING'));
+  assert.ok((await admin.get('/admin/stats')).data.totals.pendingUsers >= 1);
+
+  assert.equal((await admin.post(`/admin/users/${rows[0].id}/approve`)).status, 200);
+  assert.equal((await c.post('/auth/login', { identifier: 'pat', password: PW })).status, 200);
+  assert.equal((await c.get('/profiles')).status, 200);
+
+  // rejecting kills the live session at once and blocks sign-in
+  assert.equal((await admin.post(`/admin/users/${rows[0].id}/reject`)).status, 200);
+  assert.equal((await c.get('/profiles')).status, 401);
+  assert.equal((await client().post('/auth/login', { identifier: 'pat', password: PW })).data.error.code, 'ACCOUNT_REJECTED');
+  const log = (await admin.get('/admin/audit-logs?limit=50')).data.items.map((i) => i.action);
+  assert.ok(log.includes('user.approve') && log.includes('user.reject'));
+});
+
+test('privacy: anonymous visitors get nothing but the public site name; API responses are never cacheable', async () => {
+  const anon = client();
+  const guarded = ['/profiles', '/profiles/1', '/profiles/1/photo', '/profiles/1/family', '/profiles/1/posts', '/profiles/options?q=a', '/profiles/facets',
+    '/tree/1', '/contacts', '/contacts/relatives', '/search?q=a', '/dashboard', '/posts', '/posts/tags', '/posts/1', '/me', '/admin/stats'];
+  for (const u of guarded) assert.equal((await anon.get(u)).status, 401, u);
+  assert.equal((await anon.post('/posts', { profileId: 1, title: 'x' })).status, 401);
+  const pub = await anon.get('/settings/public');
+  assert.deepEqual(Object.keys(pub.data.settings).sort(), ['defaultTheme', 'registrationEnabled', 'siteDescription', 'siteName']);
+  const res = await fetch(`${base}/profiles`, { headers: { 'X-Requested-With': 'dataverse' } });
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+});
+
+async function freshBob() { const c = client(); assert.equal((await c.post('/auth/login', { identifier: 'bob', password: 'brand-new-password-1' })).status, 200); return c; }
+
+test('profiles: multiple social links, date of death, child & sibling linking', async () => {
+  const bob = await freshBob(); // bob's original session was revoked by the password-reset test
+  const dad = (await alice.post('/profiles', { name: 'Old Dad', gender: 'MALE', dob: '1940-01-01', dateOfDeath: '2010-06-01',
+    socialLinks: { facebook: ['https://facebook.com/a', 'b.page', 'b.page', ' '], instagram: [] } })).data.profile;
+  assert.deepEqual(dad.socialLinks, { facebook: ['https://facebook.com/a', 'b.page'], instagram: [], tiktok: [] });
+  assert.equal(dad.dateOfDeath, '2010-06-01');
+  assert.equal((await alice.post('/profiles', { name: 'Time Traveller', dob: '2000-01-01', dateOfDeath: '1999-01-01' })).status, 400);
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { dateOfDeath: '1900-01-01' })).status, 400, 'death before the stored birth date');
+  assert.equal((await alice.post('/profiles', { name: 'X', socialLinks: { myspace: ['x'] } })).status, 422);
+  assert.equal((await alice.post('/profiles', { name: 'X', socialLinks: { facebook: Array(11).fill('a').map((a, i) => a + i) } })).status, 422);
+
+  const k1 = (await alice.post('/profiles', { name: 'Kid One' })).data.profile;
+  const k2 = (await alice.post('/profiles', { name: 'Kid Two' })).data.profile;
+  const upd = await alice.patch(`/profiles/${dad.id}`, { childIds: [k1.id, k2.id] });
+  assert.equal(upd.status, 200);
+  assert.deepEqual(upd.data.family.children.map((c) => c.id).sort(), [k1.id, k2.id].sort());
+  assert.equal((await alice.get(`/profiles/${k1.id}`)).data.profile.fatherId, dad.id);
+  // siblings share the parent
+  assert.deepEqual((await alice.get(`/profiles/${k1.id}`)).data.family.siblings.map((s) => s.id), [k2.id]);
+  // unlink one child, link a sibling to k1 instead
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { childIds: [k1.id] })).status, 200);
+  assert.equal((await alice.get(`/profiles/${k2.id}`)).data.profile.fatherId, null);
+  assert.equal((await alice.patch(`/profiles/${k1.id}`, { siblingIds: [k2.id] })).status, 200);
+  assert.equal((await alice.get(`/profiles/${k2.id}`)).data.profile.fatherId, dad.id);
+  assert.equal((await alice.patch(`/profiles/${k1.id}`, { siblingIds: [] })).status, 200);
+  assert.equal((await alice.get(`/profiles/${k2.id}`)).data.profile.fatherId, null);
+  // guards
+  assert.equal((await alice.patch(`/profiles/${k1.id}`, { childIds: [dad.id] })).status, 400, 'no gender -> cannot link children');
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { childIds: [dad.id] })).status, 400);
+  const grand = (await alice.post('/profiles', { name: 'Grandpa', gender: 'MALE' })).data.profile;
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { fatherId: grand.id })).status, 200);
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { childIds: [k1.id, grand.id] })).status, 409, 'an ancestor cannot be a child');
+  assert.equal((await alice.patch(`/profiles/${grand.id}`, { siblingIds: [k1.id] })).status, 400, 'no parents linked');
+  // someone else's profile is protected
+  const bobKid = (await bob.post('/profiles', { name: 'Bob Kid', fatherId: grand.id })).data.profile;
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { childIds: [k1.id, bobKid.id] })).status, 403, 'cannot overwrite a parent link on a profile you cannot edit');
+  assert.equal((await alice.get(`/profiles/${bobKid.id}`)).data.profile.fatherId, grand.id, 'and nothing was changed');
+  const orphan = (await bob.post('/profiles', { name: 'Orphan' })).data.profile;
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { childIds: [k1.id, orphan.id] })).status, 200, 'filling an empty parent slot is allowed');
+  assert.equal((await alice.patch(`/profiles/${dad.id}`, { childIds: [k1.id] })).status, 403, 'but unlinking someone else\'s profile is not');
+});
+
+test('posts: markdown content, lower-case tags, feed, tag search, visibility and permissions', async () => {
+  const bob = await freshBob();
+  const person = (await alice.post('/profiles', { name: 'Post Subject' })).data.profile;
+  const created = await alice.post('/posts', { profileId: person.id, title: 'Hello', content: '# Hi\n**bold** <script>alert(1)</script>', tags: ['#Family', 'family', 'Eid 2026'] });
+  assert.equal(created.status, 201);
+  const post = created.data.post;
+  assert.deepEqual(post.tags, ['family', 'eid 2026']);
+  assert.equal(post.content, '# Hi\n**bold** <script>alert(1)</script>', 'stored verbatim; rendering escapes it on the client');
+  assert.equal(post.author.name, 'Alice');
+  assert.equal((await alice.post('/posts', { profileId: person.id, title: 'x', tags: Array(11).fill('t').map((t, i) => t + i) })).status, 422);
+  assert.equal((await alice.post('/posts', { title: 'no profile' })).status, 422);
+
+  // bob (not an editor of the profile) can post too, and sees alice's post in the feed
+  const bobPost = (await bob.post('/posts', { profileId: person.id, title: 'From Bob', tags: ['news'] })).data.post;
+  const feed = (await bob.get('/posts?limit=50')).data;
+  assert.ok(feed.items.some((p) => p.id === post.id) && feed.items.some((p) => p.id === bobPost.id));
+  assert.equal((await bob.get(`/posts?tag=${encodeURIComponent('family')}`)).data.items.every((p) => p.tags.includes('family')), true);
+  assert.equal((await bob.get('/posts?tag=FAMILY')).data.total >= 1, true, 'tag filter is case-insensitive');
+  assert.equal((await bob.get('/posts?q=from%20bob')).data.total, 1);
+  assert.ok((await bob.get('/posts/tags')).data.items.some((t) => t.value === 'family'));
+
+  // drafts are private to their author; others get 404, not 403
+  const draft = (await alice.post('/posts', { profileId: person.id, title: 'Secret draft', status: 'draft', tags: ['draft'] })).data.post;
+  assert.equal((await bob.get(`/posts/${draft.id}`)).status, 404);
+  assert.equal((await bob.get('/posts?q=secret')).data.total, 0);
+  assert.equal((await alice.get('/posts?q=secret')).data.total, 1);
+
+  // only author / profile editor / admin may change a post
+  assert.equal((await bob.patch(`/posts/${post.id}`, { title: 'hijack' })).status, 403);
+  assert.equal((await bob.del(`/posts/${post.id}`)).status, 403);
+  assert.equal((await alice.patch(`/posts/${bobPost.id}`, { title: 'edited by profile owner' })).status, 200, 'profile editors can moderate posts on their profile');
+  assert.equal((await alice.patch(`/posts/${post.id}`, { tags: ['updated'] })).data.post.tags[0], 'updated');
+  assert.equal((await admin.del(`/posts/${bobPost.id}`)).status, 204);
+  const profilePosts = (await alice.get(`/profiles/${person.id}/posts`)).data.items;
+  assert.ok(profilePosts.some((p) => p.id === post.id) && profilePosts.every((p) => p.profile.id === person.id));
+
+  // long content is excerpted in the feed and full on the single-post endpoint
+  const long = (await alice.post('/posts', { profileId: person.id, title: 'Long', content: 'x'.repeat(5000) })).data.post;
+  const inFeed = (await alice.get('/posts?q=Long')).data.items.find((p) => p.id === long.id);
+  assert.equal(inFeed.truncated, true);
+  assert.equal((await alice.get(`/posts/${long.id}`)).data.post.content.length, 5000);
+
+  // admin switch: contributions off blocks members but not admins
+  await admin.put('/admin/settings', { allow_user_contributions: false });
+  assert.equal((await bob.post('/posts', { profileId: person.id, title: 'blocked' })).status, 403);
+  assert.equal((await admin.post('/posts', { profileId: person.id, title: 'admin ok' })).status, 201);
+  await admin.put('/admin/settings', { allow_user_contributions: true });
 });

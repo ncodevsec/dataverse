@@ -8,20 +8,30 @@ import { api } from '../lib/api.js';
 export function Register() {
   const { register } = useAuth();
   const { registrationEnabled } = useSite();
-  const navigate = useNavigate();
   const [form, setForm] = useState({ displayName: '', username: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
 
   async function submit(e) {
     e.preventDefault();
     setBusy(true); setError(''); setErrors({});
-    try { await register(form); navigate('/', { replace: true }); }
+    try { await register(form); setPending(true); }
     catch (err) { setErrors(apiErrors(err)); setError(err.message); } finally { setBusy(false); }
   }
 
+  if (pending) {
+    return (
+      <AuthShell title="Waiting for approval" subtitle="Your account was created." footer={<Link to="/login" className="font-medium text-accent hover:underline">Back to sign in</Link>}>
+        <div role="status" className="rounded-xl border border-line bg-surface p-4 text-sm">
+          <p className="font-medium">An administrator needs to approve your account before you can sign in.</p>
+          <p className="mt-2 text-muted">Until then no profile or contact data is visible to you. Try signing in again later, or contact the person who invited you.</p>
+        </div>
+      </AuthShell>
+    );
+  }
   if (!registrationEnabled) {
     return <AuthShell title="Registration is closed" subtitle="New accounts are currently created by an administrator." footer={<Link to="/login" className="font-medium text-accent hover:underline">Back to sign in</Link>} />;
   }

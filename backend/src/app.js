@@ -55,6 +55,9 @@ export function createApp() {
     });
   }
 
+  // Everything under /api is private member data: never let browsers or shared caches keep it.
+  // (The photo route overrides this with its own private cache header.)
+  app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.use('/api', authenticate, csrfGuard, api);
   app.use('/api', notFoundHandler);
 
