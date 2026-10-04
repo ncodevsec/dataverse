@@ -9,7 +9,7 @@ import { audit } from '../services/audit.js';
 import { getSettings, updateSettings, DEFAULTS } from '../services/settings.js';
 
 const USER_SELECT = `SELECT u.id, u.email, u.username, u.display_name, u.role, u.is_active, u.must_change_password, u.profile_id,
-  u.theme, u.preferences, u.last_login_at, u.created_at, p.name AS profile_name
+  u.theme, u.preferences, u.last_login_at, u.created_at, u.approval_status, p.name AS profile_name
   FROM users u LEFT JOIN profiles p ON p.id = u.profile_id`;
 
 async function activeAdminCount(client = { query }, excludingId = null) {
@@ -19,13 +19,14 @@ async function activeAdminCount(client = { query }, excludingId = null) {
 
 // ---------------------------------------------------------------- users
 export const listUsers = asyncHandler(async (req, res) => {
-  const { q, role, status, page, limit } = req.valid.query;
+  const { q, role, status, approval, page, limit } = req.valid.query;
   const where = [];
   const params = [];
   const p = (v) => { params.push(v); return `$${params.length}`; };
   if (q) where.push(`(u.display_name ILIKE ${p(`%${escapeLike(q)}%`)} OR u.username ILIKE $${params.length} OR u.email ILIKE $${params.length})`);
   if (role) where.push(`u.role = ${p(role)}`);
   if (status) where.push(`u.is_active = ${p(status === 'active')}`);
+  if (approval) where.push(`u.approval_status = ${p(approval.toUpperCase())}`);
   const { rows } = await query(
     `${USER_SELECT.replace('SELECT u.id,', 'SELECT count(*) OVER() AS total, u.id,')}
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY u.created_at DESC, u.id LIMIT ${p(limit)} OFFSET ${p((page - 1) * limit)}`, params);
@@ -51,9 +52,9 @@ export const createUser = asyncHandler(async (req, res) => {
   const temporaryPassword = b.password ? null : generateTemporaryPassword();
   const hash = await hashPassword(b.password || temporaryPassword);
   const { rows } = await query(
-    `INSERT INTO users (email, username, display_name, password_hash, role, profile_id, must_change_password)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-    [b.email, b.username, b.displayName, hash, b.role, b.profileId ?? null, b.mustChangePassword]);
+    `INSERT INTO users (email, username, display_name, password_hash, role, profile_id, must_change_password, approval_status, approved_by, approved_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'APPROVED',$8,now()) RETURNING id`,
+    [b.email, b.username, b.displayName, hash, b.role, b.profileId ?? null, b.mustChangePassword, req.user.id]);
   await audit(req, 'user.create', { entityType: 'user', entityId: rows[0].id, summary: `Created ${b.role} account ${b.email}`, details: { role: b.role, email: b.email } });
   const user = (await query(`${USER_SELECT} WHERE u.id = $1`, [rows[0].id])).rows[0];
   // The generated password is returned exactly once and is never stored or logged in clear text.
@@ -100,6 +101,25 @@ export const updateUser = asyncHandler(async (req, res) => {
   const user = (await query(`${USER_SELECT} WHERE u.id = $1`, [id])).rows[0];
   res.json({ user: serializeUser(user) });
 });
+
+// ---------------------------------------------------------------- sign-up approval
+async function decide(req, res, next, decision) {
+  const { id } = req.valid.params;
+  if (id === req.user.id) throw conflict('You cannot change the approval status of your own account');
+  const before = (await query('SELECT id, email, role, approval_status FROM users WHERE id = $1', [id])).rows[0];
+  if (!before) throw notFound('User not found');
+  if (before.approval_status === decision) return res.json({ user: serializeUser((await query(`${USER_SELECT} WHERE u.id = $1`, [id])).rows[0]) });
+  if (decision === 'REJECTED' && before.role === 'ADMIN' && (await activeAdminCount(undefined, id)) === 0) throw conflict('At least one active administrator must remain');
+  // Rejecting also bumps token_version so any lingering session dies immediately.
+  await query(
+    `UPDATE users SET approval_status = $2, approved_by = $3, approved_at = now(),
+            token_version = token_version + CASE WHEN $2 = 'APPROVED' THEN 0 ELSE 1 END WHERE id = $1`, [id, decision, req.user.id]);
+  await audit(req, decision === 'APPROVED' ? 'user.approve' : 'user.reject', {
+    entityType: 'user', entityId: id, summary: `${decision === 'APPROVED' ? 'Approved' : 'Rejected'} registration of ${before.email}`, details: { from: before.approval_status } });
+  res.json({ user: serializeUser((await query(`${USER_SELECT} WHERE u.id = $1`, [id])).rows[0]) });
+}
+export const approveUser = asyncHandler((req, res, next) => decide(req, res, next, 'APPROVED'));
+export const rejectUser = asyncHandler((req, res, next) => decide(req, res, next, 'REJECTED'));
 
 export const resetUserPassword = asyncHandler(async (req, res) => {
   const { id } = req.valid.params;
@@ -172,6 +192,7 @@ export const stats = asyncHandler(async (_req, res) => {
       (SELECT count(*) FROM users)::int AS users,
       (SELECT count(*) FROM users WHERE role = 'ADMIN')::int AS admins,
       (SELECT count(*) FROM users WHERE NOT is_active)::int AS inactive_users,
+      (SELECT count(*) FROM users WHERE approval_status = 'PENDING')::int AS pending_users,
       (SELECT count(*) FROM profiles)::int AS profiles,
       (SELECT count(*) FROM profiles WHERE photo_updated_at IS NOT NULL)::int AS profiles_with_photo,
       (SELECT count(*) FROM profiles WHERE father_id IS NOT NULL OR mother_id IS NOT NULL)::int AS profiles_with_parents,
@@ -192,7 +213,7 @@ export const stats = asyncHandler(async (_req, res) => {
   const t = totals.rows[0];
   res.json({
     totals: {
-      users: t.users, admins: t.admins, inactiveUsers: t.inactive_users, profiles: t.profiles, profilesWithPhoto: t.profiles_with_photo,
+      users: t.users, admins: t.admins, inactiveUsers: t.inactive_users, pendingUsers: t.pending_users, profiles: t.profiles, profilesWithPhoto: t.profiles_with_photo,
       profilesWithParents: t.profiles_with_parents, married: t.married, contacts: t.contacts, uniqueNumbers: t.unique_numbers,
       linkedContacts: t.linked_contacts, posts: t.posts, auditEvents: t.audit_events,
     },

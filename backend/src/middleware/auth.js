@@ -30,13 +30,13 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
   try {
     const payload = verifyToken(token);
     const { rows } = await query(
-      `SELECT id, email, username, display_name, role, is_active, must_change_password, token_version,
+      `SELECT id, email, username, display_name, role, is_active, must_change_password, token_version, approval_status,
               profile_id, theme, preferences, last_login_at, created_at
          FROM users WHERE id = $1`,
       [payload.sub],
     );
     const user = rows[0];
-    if (user && user.is_active && user.token_version === payload.tv) req.user = user;
+    if (user && user.is_active && user.approval_status === 'APPROVED' && user.token_version === payload.tv) req.user = user;
   } catch {
     // invalid / expired token => treated as anonymous
   }

@@ -16,6 +16,8 @@ adminRouter.get('/users', validate({ query: userListQuery }), a.listUsers);
 adminRouter.post('/users', validate({ body: adminUserCreateSchema }), a.createUser);
 adminRouter.get('/users/:id', validate({ params: uuidParam }), a.getUser);
 adminRouter.patch('/users/:id', validate({ params: uuidParam, body: adminUserUpdateSchema }), a.updateUser);
+adminRouter.post('/users/:id/approve', validate({ params: uuidParam }), a.approveUser);
+adminRouter.post('/users/:id/reject', validate({ params: uuidParam }), a.rejectUser);
 adminRouter.delete('/users/:id', validate({ params: uuidParam }), a.deleteUser);
 adminRouter.post('/users/:id/reset-password', validate({ params: uuidParam, body: adminResetPasswordSchema }), a.resetUserPassword);
 

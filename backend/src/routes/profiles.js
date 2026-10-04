@@ -2,7 +2,8 @@ import { Router } from 'express';
 import express from 'express';
 import { validate } from '../middleware/validate.js';
 import * as c from '../controllers/profileController.js';
-import { idParam, profileCreateSchema, profileUpdateSchema, profileListQuery, optionsQuery, postSchema, postUpdateSchema } from '../utils/schemas.js';
+import * as posts from '../controllers/postController.js';
+import { idParam, profileCreateSchema, profileUpdateSchema, profileListQuery, optionsQuery, postSchema, postUpdateSchema, postCreateSchema, postListQuery } from '../utils/schemas.js';
 
 export const profilesRouter = Router();
 const photoBody = express.raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: '1mb' });
@@ -18,9 +19,13 @@ profilesRouter.get('/:id/family', validate({ params: idParam }), c.getFamily);
 profilesRouter.get('/:id/photo', validate({ params: idParam }), c.getPhoto);
 profilesRouter.put('/:id/photo', validate({ params: idParam }), photoBody, c.putPhoto);
 profilesRouter.delete('/:id/photo', validate({ params: idParam }), c.removePhoto);
-profilesRouter.get('/:id/posts', validate({ params: idParam }), c.listPosts);
-profilesRouter.post('/:id/posts', validate({ params: idParam, body: postSchema }), c.createPost);
+profilesRouter.get('/:id/posts', validate({ params: idParam }), posts.listForProfile);
+profilesRouter.post('/:id/posts', validate({ params: idParam, body: postSchema }), posts.createForProfile);
 
 export const postsRouter = Router();
-postsRouter.patch('/:id', validate({ params: idParam, body: postUpdateSchema }), c.updatePost);
-postsRouter.delete('/:id', validate({ params: idParam }), c.removePost);
+postsRouter.get('/', validate({ query: postListQuery }), posts.feed);
+postsRouter.get('/tags', posts.tags);
+postsRouter.post('/', validate({ body: postCreateSchema }), posts.create);
+postsRouter.get('/:id', validate({ params: idParam }), posts.get);
+postsRouter.patch('/:id', validate({ params: idParam, body: postUpdateSchema }), posts.update);
+postsRouter.delete('/:id', validate({ params: idParam }), posts.remove);

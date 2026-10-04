@@ -13,6 +13,7 @@ export function ThemeToggle({ className }) {
 const NAV = [
   { to: '/', label: 'Home', icon: 'home', end: true },
   { to: '/profiles', label: 'Profiles', icon: 'users' },
+  { to: '/posts', label: 'Posts', icon: 'list' },
   { to: '/shekor', label: 'Shekor', icon: 'tree' },
   { to: '/caller-id', label: 'Caller ID', icon: 'phone' },
   { to: '/search', label: 'Search', icon: 'search' },
@@ -34,7 +35,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
-  const bottom = [...NAV.slice(0, 4), { to: '/settings', label: 'Account', icon: 'user' }];
+  const bottom = [...NAV.slice(0, 5), { to: '/settings', label: 'Account', icon: 'user' }];
 
   return (
     <div className="min-h-dvh md:pl-64">
@@ -71,10 +72,10 @@ export default function Layout() {
       </main>
 
       {/* mobile bottom navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Main">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-6 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden" aria-label="Main">
         {bottom.map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end}
-            className={({ isActive }) => cx('flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium', isActive ? 'text-accent' : 'text-muted')}>
+            className={({ isActive }) => cx('flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium', isActive ? 'text-accent' : 'text-muted')}>
             <Icon name={n.icon} className="h-5 w-5" />{n.label}
           </NavLink>
         ))}

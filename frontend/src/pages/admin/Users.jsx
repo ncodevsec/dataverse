@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ProfilePicker from '../../components/ProfilePicker.jsx';
 import { Badge, Button, Card, Checkbox, ConfirmDialog, EmptyState, ErrorState, IconButton, LoadingBlock, Modal, Pagination, SearchInput, SelectField, TextField, apiErrors } from '../../components/ui.jsx';
 import { useAuth, useToast } from '../../context/AppContext.jsx';
@@ -65,14 +66,16 @@ export default function Users() {
   const dq = useDebounce(text, 300);
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
+  const [sp] = useSearchParams();
+  const [approval, setApproval] = useState(sp.get('approval') || '');
   const [page, setPage] = useState(1);
   const [edit, setEdit] = useState(undefined);
   const [del, setDel] = useState(null);
   const [reset, setReset] = useState(null);
   const [secret, setSecret] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setPage(1), [dq, role, status]);
-  const { data, error, loading, reload } = useFetch(() => api.get('/admin/users', { q: dq, role, status, page, limit: 20 }), [dq, role, status, page]);
+  useEffect(() => setPage(1), [dq, role, status, approval]);
+  const { data, error, loading, reload } = useFetch(() => api.get('/admin/users', { q: dq, role, status, approval, page, limit: 20 }), [dq, role, status, approval, page]);
 
   async function doDelete() {
     setBusy(true);
@@ -83,6 +86,9 @@ export default function Users() {
     try { const d = await api.post(`/admin/users/${reset.id}/reset-password`, {}); setSecret({ title: 'Password reset', text: `New temporary password for ${reset.displayName}:`, password: d.temporaryPassword }); setReset(null); }
     catch (e) { toast.error(e.message); } finally { setBusy(false); }
   }
+  async function decide(u, action) {
+    try { await api.post(`/admin/users/${u.id}/${action}`); toast.success(action === 'approve' ? `${u.displayName} approved. They can sign in now.` : `${u.displayName} rejected`); reload(); } catch (e) { toast.error(e.message); }
+  }
   async function toggleActive(u) {
     try { await api.patch(`/admin/users/${u.id}`, { isActive: !u.isActive }); toast.success(u.isActive ? 'User deactivated' : 'User activated'); reload(); } catch (e) { toast.error(e.message); }
   }
@@ -92,6 +98,7 @@ export default function Users() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <SearchInput className="min-w-[14rem] flex-1" value={text} onChange={setText} placeholder="Search name, username or email" />
         <SelectField aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)}><option value="">All roles</option><option value="ADMIN">Administrators</option><option value="USER">Users</option></SelectField>
+        <SelectField aria-label="Approval" value={approval} onChange={(e) => setApproval(e.target.value)}><option value="">Any approval</option><option value="pending">Waiting for approval</option><option value="approved">Approved</option><option value="rejected">Rejected</option></SelectField>
         <SelectField aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Any status</option><option value="active">Active</option><option value="inactive">Inactive</option></SelectField>
         <Button variant="primary" icon="plus" onClick={() => setEdit(null)}>Create user</Button>
       </div>
@@ -105,9 +112,11 @@ export default function Users() {
                   <tr key={u.id}>
                     <td className="px-4 py-3"><p className="font-medium">{u.displayName}{u.id === me.id && <span className="ml-2 text-xs text-muted">(you)</span>}</p><p className="text-xs text-muted">@{u.username} · {u.email}</p></td>
                     <td className="px-4 py-3">{u.role === 'ADMIN' ? <Badge tone="accent">Admin</Badge> : <Badge>User</Badge>}</td>
-                    <td className="px-4 py-3">{u.isActive ? <Badge>Active</Badge> : <Badge tone="danger">Inactive</Badge>}{u.mustChangePassword && <Badge tone="warn" className="ml-1">Must change password</Badge>}</td>
+                    <td className="px-4 py-3">{u.approvalStatus === 'PENDING' && <Badge tone="warn" className="mr-1">Waiting for approval</Badge>}{u.approvalStatus === 'REJECTED' && <Badge tone="danger" className="mr-1">Rejected</Badge>}{u.isActive ? <Badge>Active</Badge> : <Badge tone="danger">Inactive</Badge>}{u.mustChangePassword && <Badge tone="warn" className="ml-1">Must change password</Badge>}</td>
                     <td className="px-4 py-3 text-muted">{u.lastLoginAt ? timeAgo(u.lastLoginAt) : 'Never'}</td>
                     <td className="px-4 py-3"><div className="flex justify-end">
+                      {u.id !== me.id && u.approvalStatus !== 'APPROVED' && <Button size="sm" variant="primary" icon="check" className="mr-1" onClick={() => decide(u, 'approve')}>Approve</Button>}
+                      {u.id !== me.id && u.approvalStatus === 'PENDING' && <Button size="sm" className="mr-1 text-danger" onClick={() => decide(u, 'reject')}>Reject</Button>}
                       <IconButton icon="edit" label={`Edit ${u.displayName}`} onClick={() => setEdit(u)} />
                       <IconButton icon="key" label={`Reset password for ${u.displayName}`} onClick={() => setReset(u)} />
                       {u.id !== me.id && <><IconButton icon={u.isActive ? 'x' : 'check'} label={u.isActive ? `Deactivate ${u.displayName}` : `Activate ${u.displayName}`} onClick={() => toggleActive(u)} /><IconButton icon="trash" label={`Delete ${u.displayName}`} onClick={() => setDel(u)} /></>}

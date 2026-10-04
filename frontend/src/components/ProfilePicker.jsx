@@ -4,7 +4,7 @@ import { useDebounce } from '../hooks/hooks.js';
 import { Avatar, Field, IconButton, cx } from './ui.jsx';
 
 /** Searchable single-profile picker (father / mother / spouse / saved-by...). value = profile id or null. */
-export default function ProfilePicker({ label, value, onChange, initialLabel, error, hint, placeholder = 'Search by name, nickname or ID' }) {
+export default function ProfilePicker({ label, value, onChange, initialLabel, error, hint, placeholder = 'Search by name, nickname or ID', onSelect, resetOnPick = false, exclude = [] }) {
   const id = useId();
   const [selected, setSelected] = useState(value ? { id: value, name: initialLabel || `Profile #${value}` } : null);
   const [q, setQ] = useState('');
@@ -23,7 +23,7 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
   useEffect(() => {
     if (!open || dq.trim().length < 1) { setItems([]); return undefined; }
     let live = true;
-    api.get('/profiles/options', { q: dq, limit: 8 }).then((d) => { if (live) { setItems(d.items); setActive(0); } }).catch(() => {});
+    api.get('/profiles/options', { q: dq, limit: 8 + exclude.length }).then((d) => { if (live) { setItems(d.items.filter((x) => !exclude.includes(x.id)).slice(0, 8)); setActive(0); } }).catch(() => {});
     return () => { live = false; };
   }, [dq, open]);
 
@@ -33,7 +33,7 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
     return () => document.removeEventListener('mousedown', close);
   }, []);
 
-  const pick = (p) => { setSelected(p); onChange(p.id); setQ(''); setOpen(false); };
+  const pick = (p) => { if (!resetOnPick) setSelected(p); onChange(p.id); onSelect?.(p); setQ(''); setOpen(false); };
   const onKey = (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, items.length - 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
@@ -44,7 +44,7 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
   return (
     <Field label={label} error={error} hint={hint} htmlFor={id}>
       <div ref={box} className="relative">
-        {selected ? (
+        {selected && !resetOnPick ? (
           <div className="flex h-10 items-center justify-between rounded-lg border border-line bg-surface px-3 text-sm">
             <span className="truncate"><span className="font-medium">{selected.name}</span> <span className="text-muted">#{selected.id}</span></span>
             <IconButton icon="x" label={`Clear ${label}`} className="-mr-2 h-7 w-7" onClick={() => { setSelected(null); onChange(null); }} />
@@ -54,7 +54,7 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
             onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={onKey}
             className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30" />
         )}
-        {open && !selected && q.trim() && (
+        {open && !(selected && !resetOnPick) && q.trim() && (
           <ul id={`${id}-list`} role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-line bg-surface p-1 shadow-xl">
             {items.length === 0 && <li className="px-3 py-2 text-sm text-muted">No matches</li>}
             {items.map((p, i) => (

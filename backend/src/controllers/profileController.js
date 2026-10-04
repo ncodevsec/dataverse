@@ -42,7 +42,7 @@ export const getFamily = asyncHandler(async (req, res) => {
 
 export const create = asyncHandler(async (req, res) => {
   if (!isAdmin(req.user) && !(await getSettings()).allow_user_contributions) throw forbidden('Adding profiles is limited to administrators right now');
-  const id = await svc.createProfile(req.valid.body, req.user.id);
+  const id = await svc.createProfile(req.valid.body, req.user);
   await audit(req, 'profile.create', { entityType: 'profile', entityId: id, summary: `Created profile "${req.valid.body.name}"` });
   res.status(201).json(await svc.getProfile(id, req.user));
 });
@@ -51,7 +51,7 @@ export const update = asyncHandler(async (req, res) => {
   const { id } = req.valid.params;
   const existing = await loadOr404(id);
   if (!svc.canEditProfile(req.user, existing)) throw forbidden('You can only edit profiles you created or that are linked to your account');
-  const { changed, previousName } = await svc.updateProfile(id, req.valid.body, req.user.id);
+  const { changed, previousName } = await svc.updateProfile(id, req.valid.body, req.user);
   await audit(req, 'profile.update', { entityType: 'profile', entityId: id, summary: `Updated profile "${previousName}"`, details: { fields: changed } });
   res.json(await svc.getProfile(id, req.user));
 });
@@ -88,52 +88,5 @@ export const removePhoto = asyncHandler(async (req, res) => {
   const existing = await loadOr404(id);
   if (!svc.canEditProfile(req.user, existing)) throw forbidden('You cannot change this profile\'s photo');
   await svc.deletePhoto(id);
-  res.status(204).end();
-});
-
-// ---------------------------------------------------------------- posts (notes attached to a profile)
-const canManagePost = (user, post, profile) => isAdmin(user) || post.created_by === user.id || svc.canEditProfile(user, profile);
-const postOut = (r) => ({ id: r.id, profileId: r.profile_id, title: r.title, content: r.content, status: r.status, tags: r.tags, createdAt: r.created_at, updatedAt: r.updated_at, createdBy: r.created_by });
-
-export const listPosts = asyncHandler(async (req, res) => {
-  const profile = await loadOr404(req.valid.params.id);
-  const manage = svc.canEditProfile(req.user, profile);
-  const { rows } = await query(
-    `SELECT * FROM posts WHERE profile_id = $1 AND (status = 'published' OR $2::boolean OR created_by = $3) ORDER BY created_at DESC, id DESC LIMIT 100`,
-    [profile.id, manage, req.user.id]);
-  res.json({ items: rows.map(postOut) });
-});
-
-export const createPost = asyncHandler(async (req, res) => {
-  const profile = await loadOr404(req.valid.params.id);
-  if (!svc.canEditProfile(req.user, profile)) throw forbidden('You cannot add notes to this profile');
-  const b = req.valid.body;
-  const { rows } = await query(
-    `INSERT INTO posts (profile_id, title, content, status, tags, created_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-    [profile.id, b.title, b.content, b.status, b.tags ?? [], req.user.id]);
-  res.status(201).json({ post: postOut(rows[0]) });
-});
-
-async function loadPost(req) {
-  const { rows } = await query('SELECT * FROM posts WHERE id = $1', [req.valid.params.id]);
-  if (!rows.length) throw notFound('Note not found');
-  const profile = await loadOr404(rows[0].profile_id);
-  if (!canManagePost(req.user, rows[0], profile)) throw forbidden('You cannot change this note');
-  return rows[0];
-}
-
-export const updatePost = asyncHandler(async (req, res) => {
-  const post = await loadPost(req);
-  const b = req.valid.body;
-  const { rows } = await query(
-    `UPDATE posts SET title = COALESCE($2, title), content = COALESCE($3, content), status = COALESCE($4, status), tags = COALESCE($5, tags)
-      WHERE id = $1 RETURNING *`,
-    [post.id, b.title ?? null, b.content ?? null, b.status ?? null, b.tags ?? null]);
-  res.json({ post: postOut(rows[0]) });
-});
-
-export const removePost = asyncHandler(async (req, res) => {
-  const post = await loadPost(req);
-  await query('DELETE FROM posts WHERE id = $1', [post.id]);
   res.status(204).end();
 });

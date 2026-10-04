@@ -143,6 +143,15 @@ npm run admin:create -- --email me@example.com --username boss --password 'a-lon
 
 Safety rails: admins cannot demote/deactivate/delete themselves, and the last active admin can never be removed. Role changes, deactivation and password changes revoke that user's existing sessions immediately.
 
+## 4b. Account approval, posts and profile features (migration 002)
+
+- **Approval:** public sign-ups are created `PENDING`, get **no session**, and cannot sign in or see any data until an admin approves them in *Admin → Users* (filter "Waiting for approval", or the banner on the Admin overview). Rejecting revokes sessions immediately. Existing accounts are migrated as approved.
+- **Posts** (formerly notes): Markdown (rendered safely: no raw HTML, no images, links are `noopener nofollow`), lower-case tags, a global feed at `/posts` with search, tag and "my posts" filters. Any approved member may post when "Let members add profiles and contacts" is on; authors, profile editors and admins can edit/delete.
+- **Profiles:** photo cropping + browser-side compression on save, several accounts per social network, children and siblings linking, religion / political-view dropdowns, date of death.
+- All `/api` responses are sent with `Cache-Control: no-store`.
+
+**Deploy order matters:** run `npm run db:migrate` against the production database *before* deploying this code.
+
 ## 5. Environment variables
 
 See [`.env.example`](.env.example) for the annotated list. Required: `DATABASE_URL`, `JWT_SECRET` (≥ 32 chars). The API refuses to start with a missing/short secret.
