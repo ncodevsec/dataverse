@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { PostCard, TagChip, usePostDialogs } from '../components/PostViews.jsx';
-import { Button, EmptyState, ErrorState, LoadingBlock, PageHeader, Pagination, SearchInput } from '../components/ui.jsx';
+import { Button, EmptyState, ErrorState, InfiniteFooter, LoadingBlock, PageHeader, SearchInput } from '../components/ui.jsx';
 import { useSite } from '../context/AppContext.jsx';
-import { useDebounce, useFetch, useTitle } from '../hooks/hooks.js';
+import { useDebounce, useFetch, useInfiniteList, useTitle } from '../hooks/hooks.js';
 import { api } from '../lib/api.js';
 
 export default function Posts() {
@@ -13,15 +13,14 @@ export default function Posts() {
   const dq = useDebounce(text, 300);
   const tag = sp.get('tag') || '';
   const mine = sp.get('mine') === '1';
-  const page = Number(sp.get('page')) || 1;
 
-  const update = (patch, resetPage = true) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) (v ? n.set(k, v) : n.delete(k)); if (resetPage) n.delete('page'); setSp(n, { replace: true }); };
+  const update = (patch) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) (v ? n.set(k, v) : n.delete(k)); setSp(n, { replace: true }); };
   const first = useRef(true);
   useEffect(() => { if (first.current) { first.current = false; return; } update({ q: dq }); /* eslint-disable-next-line */ }, [dq]);
 
   const tags = useFetch(() => api.get('/posts/tags'), []);
-  const { data, error, loading, reload } = useFetch(() => api.get('/posts', { q: sp.get('q') || '', tag, mine: mine ? '1' : '', page, limit: 10 }), [sp.toString()]);
-  const refresh = () => { reload(); tags.reload(); };
+  const list = useInfiniteList((page) => api.get('/posts', { q: sp.get('q') || '', tag, mine: mine ? '1' : '', page, limit: 10 }), [sp.toString()]);
+  const refresh = () => { list.reload(); tags.reload(); };
   const { openNew, openEdit, askDelete, dialogs } = usePostDialogs({ reload: refresh });
   const anyFilter = tag || mine || sp.get('q');
 
@@ -42,14 +41,14 @@ export default function Posts() {
       {anyFilter && <div className="mt-2"><Button size="sm" variant="ghost" onClick={() => { setText(''); setSp({}, { replace: true }); }}>Clear search and filters</Button></div>}
 
       <div className="mt-5">
-        {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock rows={4} /> : data.items.length === 0 ? (
+        {list.error && list.items.length === 0 ? <ErrorState error={list.error} onRetry={list.reload} /> : list.initialLoading ? <LoadingBlock rows={4} /> : list.items.length === 0 ? (
           <EmptyState title={anyFilter ? 'No posts match' : 'No posts yet'} icon="list" action={<Button variant="primary" icon="plus" onClick={openNew}>Write the first post</Button>}>
             {anyFilter ? 'Try a different word or tag.' : 'Posts are stories or notes about a person. Markdown and tags are supported.'}</EmptyState>
         ) : (
-          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
-            <div className="space-y-4">{data.items.map((p) => <PostCard key={p.id} post={p} onEdit={openEdit} onDelete={askDelete} />)}</div>
-            <Pagination page={data.page} pages={data.pages} total={data.total} label="posts" onPage={(p) => { update({ page: p > 1 ? String(p) : '' }, false); window.scrollTo({ top: 0 }); }} />
-          </div>
+          <>
+            <div className="space-y-4">{list.items.map((p) => <PostCard key={p.id} post={p} onEdit={openEdit} onDelete={askDelete} />)}</div>
+            <InfiniteFooter list={list} label="posts" />
+          </>
         )}
       </div>
       {dialogs}

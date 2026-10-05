@@ -152,6 +152,14 @@ Safety rails: admins cannot demote/deactivate/delete themselves, and the last ac
 
 **Deploy order matters:** run `npm run db:migrate` against the production database *before* deploying this code.
 
+## 4c. Entities, multiple spouses, views, backup (migration 003)
+
+- **Entity types:** a profile is a Human, Family, Group, Organization, Political party or Other. Only humans have family links (parents, spouses, children, siblings). Any type can be connected to any other via **links**: member of / has member, sub-unit of / has sub-unit, affiliated with, connected to (with optional role, dates, note). A person can have many memberships independent of family. Any entity can be the root of a structure (`GET /api/entities/:id/structure`); loops in sub-unit chains are rejected.
+- **Multiple spouses:** every marriage is a record (`marriages`) with optional dates and how it ended. `profiles.spouse_id` remains the *current* spouse and is kept in sync by the API. The profile page shows each marriage with its own children.
+- **Inherited address:** if the permanent address is empty, the profile page shows the nearest paternal ancestor's address (read-time; nothing is copied into the row).
+- **Profiles page:** newest first by default, four layouts (grid horizontal / grid vertical / rows cards / rows compact; remembered per browser) and infinite scrolling (also Posts and Caller ID).
+- **Backup (Admin → Backup, or `npm run backup`):** one ZIP named `dataverse-backup_YYYY-MM-DD_HH-MM-SS_UTC.zip` with `database.sql` (restorable data), `img/` (all profile photos, plus any files in a repo-level `img/` folder) and a README. Restore: empty DB → `npm run db:migrate` (without `BOOTSTRAP_ADMIN_*`) → `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database.sql`. On Netlify the in-app download only works for small databases (10 s / 6 MB limits); use `npm run backup` locally for big ones. Backups hold personal data and password hashes: never commit them (`backups/` is git-ignored).
+
 ## 5. Environment variables
 
 See [`.env.example`](.env.example) for the annotated list. Required: `DATABASE_URL`, `JWT_SECRET` (≥ 32 chars). The API refuses to start with a missing/short secret.

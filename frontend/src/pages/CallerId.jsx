@@ -3,9 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import Icon from '../components/Icon.jsx';
 import ContactForm from '../components/ContactForm.jsx';
 import ProfilePicker from '../components/ProfilePicker.jsx';
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, LoadingBlock, Modal, PageHeader, Pagination, SearchInput, SelectField } from '../components/ui.jsx';
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, InfiniteFooter, LoadingBlock, Modal, PageHeader, SearchInput, SelectField } from '../components/ui.jsx';
 import { useAuth, useSite, useToast } from '../context/AppContext.jsx';
-import { useDebounce, useFetch, useTitle } from '../hooks/hooks.js';
+import { useDebounce, useFetch, useInfiniteList, useTitle } from '../hooks/hooks.js';
 import { api } from '../lib/api.js';
 
 export function ContactRow({ c, onEdit, onDelete }) {
@@ -68,25 +68,24 @@ export default function CallerId() {
   const dq = useDebounce(text, 300);
   const relative = sp.get('relative') || 'all';
   const sort = sp.get('sort') || 'name';
-  const page = Number(sp.get('page')) || 1;
-  const limit = user.preferences?.pageSize || 20;
+  const limit = Math.max(30, user.preferences?.pageSize || 30);
   const [editing, setEditing] = useState(undefined); // undefined closed | null new | contact
   const [importing, setImporting] = useState(false);
   const [del, setDel] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const update = (patch, resetPage = true) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) (v ? n.set(k, v) : n.delete(k)); if (resetPage) n.delete('page'); setSp(n, { replace: true }); };
+  const update = (patch) => { const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(patch)) (v ? n.set(k, v) : n.delete(k)); setSp(n, { replace: true }); };
   const first = useRef(true);
   useEffect(() => { if (first.current) { first.current = false; return; } update({ q: dq }); /* eslint-disable-next-line */ }, [dq]);
 
   const relatives = useFetch(() => api.get('/contacts/relatives'), []);
-  const { data, error, loading, reload } = useFetch(() => api.get('/contacts', { q: sp.get('q') || '', relative, sort, page, limit }), [sp.toString(), limit]);
+  const list = useInfiniteList((page) => api.get('/contacts', { q: sp.get('q') || '', relative, sort, page, limit }), [sp.toString(), limit]);
 
   async function remove() {
     setBusy(true);
-    try { await api.del(`/contacts/${del.id}`); toast.success('Contact deleted'); setDel(null); reload(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+    try { await api.del(`/contacts/${del.id}`); toast.success('Contact deleted'); setDel(null); list.reload(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   }
-  const refresh = () => { reload(); relatives.reload(); };
+  const refresh = () => { list.reload(); relatives.reload(); };
 
   return (
     <div>
@@ -103,13 +102,14 @@ export default function CallerId() {
       </div>
 
       <div className="mt-5">
-        {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock rows={6} /> : data.items.length === 0 ? (
+        {list.error && list.items.length === 0 ? <ErrorState error={list.error} onRetry={list.reload} /> : list.initialLoading ? <LoadingBlock rows={6} /> : list.items.length === 0 ? (
           <EmptyState title="No contacts found" icon="phone" action={<Button variant="primary" icon="plus" onClick={() => setEditing(null)}>Add contact</Button>}>{sp.get('q') ? 'Nothing matches that search. Try fewer digits or a shorter name.' : 'Add a contact or import a vCard file to get started.'}</EmptyState>
         ) : (
-          <div className={loading ? 'opacity-60 transition-opacity' : ''}>
-            <Card><ul className="divide-y divide-line">{data.items.map((c) => <ContactRow key={c.id} c={c} onEdit={setEditing} onDelete={setDel} />)}</ul></Card>
-            <Pagination page={data.page} pages={data.pages} total={data.total} label="contacts" onPage={(p) => { update({ page: p > 1 ? String(p) : '' }, false); window.scrollTo({ top: 0 }); }} />
-          </div>
+          <>
+            <p className="mb-3 text-sm text-muted">{list.total.toLocaleString()} {list.total === 1 ? 'contact' : 'contacts'}</p>
+            <Card><ul className="divide-y divide-line">{list.items.map((c) => <ContactRow key={c.id} c={c} onEdit={setEditing} onDelete={setDel} />)}</ul></Card>
+            <InfiniteFooter list={list} label="contacts" />
+          </>
         )}
       </div>
 

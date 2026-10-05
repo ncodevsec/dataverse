@@ -19,7 +19,7 @@ export const btnClass = ({ variant = 'secondary', size = 'md', className = '' } 
 
 export function Button({ variant, size, loading, className, children, icon, ...props }) {
   return (
-    <button className={btnClass({ variant, size, className })} disabled={loading || props.disabled} {...props}>
+    <button type="button" className={btnClass({ variant, size, className })} {...props} disabled={loading || props.disabled}>
       {loading ? <Spinner className="h-4 w-4" /> : icon ? <Icon name={icon} className="h-4 w-4" /> : null}
       {children}
     </button>
@@ -150,7 +150,7 @@ export function PageHeader({ title, subtitle, actions, back }) {
 }
 
 export function Avatar({ src, name, size = 'md', gender, className }) {
-  const dims = { sm: 'h-9 w-9 text-xs', md: 'h-12 w-12 text-sm', lg: 'h-20 w-20 text-xl', xl: 'h-32 w-32 text-3xl' }[size];
+  const dims = { xs: 'h-7 w-7 text-[10px]', sm: 'h-9 w-9 text-xs', md: 'h-12 w-12 text-sm', lg: 'h-20 w-20 text-xl', xl: 'h-32 w-32 text-3xl' }[size];
   return src ? (
     <img src={src} alt={name ? `Photo of ${name}` : ''} loading="lazy" className={cx('shrink-0 rounded-full border border-line object-cover', dims, className)} />
   ) : (
@@ -163,7 +163,7 @@ export function Tabs({ tabs, value, onChange, className }) {
   return (
     <div role="tablist" className={cx('flex gap-1 overflow-x-auto border-b border-line', className)}>
       {tabs.map((t) => (
-        <button key={t.id} role="tab" aria-selected={value === t.id} onClick={() => onChange(t.id)}
+        <button key={t.id} type="button" role="tab" aria-selected={value === t.id} onClick={() => onChange(t.id)}
           className={cx('-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
             value === t.id ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-ink')}>{t.label}</button>
       ))}
@@ -259,3 +259,15 @@ export function Logo({ className = 'h-8 w-8' }) {
 }
 
 export const apiErrors = (err) => (err?.details && typeof err.details === 'object' ? err.details : {});
+
+/** Put after an infinite list: observes scrolling, shows a subtle spinner while loading, and an end-of-list note. */
+export function InfiniteFooter({ list, label = 'items' }) {
+  return (
+    <div ref={list.sentinelRef} className="flex min-h-12 items-center justify-center py-4 text-xs text-muted" aria-live="polite">
+      {list.error ? <span role="alert">Could not load more. <button type="button" className="text-accent underline" onClick={list.loadMore}>Try again</button></span>
+        : list.loadingMore ? <span className="inline-flex items-center gap-2"><Spinner className="h-4 w-4" />Loading more…</span>
+        : list.hasMore ? (list.supported ? <span aria-hidden className="opacity-0">.</span> : <Button size="sm" onClick={list.loadMore}>Load more</Button>)
+        : list.items.length > 0 ? <span>You've reached the end · {list.total.toLocaleString()} {label}</span> : null}
+    </div>
+  );
+}

@@ -10,7 +10,7 @@ import { api } from '../lib/api.js';
 function Start() {
   const [q, setQ] = useState('');
   const dq = useDebounce(q, 250);
-  const results = useFetch(() => (dq.trim() ? api.get('/profiles/options', { q: dq, limit: 10 }) : Promise.resolve(null)), [dq]);
+  const results = useFetch(() => (dq.trim() ? api.get('/profiles/options', { q: dq, limit: 10, entityType: 'HUMAN' }) : Promise.resolve(null)), [dq]);
   const recent = useFetch(() => api.get('/profiles', { sort: 'newest', limit: 6 }), []);
   const list = results.data?.items ?? (dq.trim() ? [] : null);
   return (
@@ -88,7 +88,7 @@ export default function Shekor() {
                 <Group title="This person and spouse">
                   <div className="space-y-2">
                     <Person p={focus} focus />
-                    {f.spouse ? <Person p={f.spouse} role={spouseRole} /> : <p className="rounded-xl border border-dashed border-line p-3 text-sm text-muted">No spouse linked</p>}
+                    {(f.spouses || []).length ? f.spouses.map((s) => <Person key={s.person.id} p={s.person} role={`${spouseRole}${s.endReason ? ` · ${s.endReason.toLowerCase()}` : s.current ? ' · current' : ''}`} />) : <p className="rounded-xl border border-dashed border-line p-3 text-sm text-muted">No spouse linked</p>}
                   </div>
                 </Group>
               </div>
