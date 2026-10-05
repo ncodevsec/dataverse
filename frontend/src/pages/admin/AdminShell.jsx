@@ -8,8 +8,9 @@ import Users from './Users.jsx';
 import { AdminProfiles, AdminContacts } from './AdminData.jsx';
 import Audit from './Audit.jsx';
 import SiteSettings from './SiteSettings.jsx';
+import Backup from './Backup.jsx';
 
-const LINKS = [['/admin', 'Overview', true], ['/admin/users', 'Users'], ['/admin/profiles', 'Profiles'], ['/admin/contacts', 'Caller ID'], ['/admin/audit', 'Audit log'], ['/admin/settings', 'Site settings']];
+const LINKS = [['/admin', 'Overview', true], ['/admin/users', 'Users'], ['/admin/profiles', 'Profiles'], ['/admin/contacts', 'Caller ID'], ['/admin/audit', 'Audit log'], ['/admin/settings', 'Site settings'], ['/admin/backup', 'Backup']];
 
 function Overview() {
   const stats = useFetch(() => api.get('/admin/stats'), []);
@@ -93,6 +94,7 @@ export default function AdminShell() {
         <Route path="contacts" element={<AdminContacts />} />
         <Route path="audit" element={<Audit />} />
         <Route path="settings" element={<SiteSettings />} />
+        <Route path="backup" element={<Backup />} />
       </Routes>
     </div>
   );

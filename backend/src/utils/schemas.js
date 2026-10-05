@@ -113,9 +113,20 @@ const idList = z.preprocess(
   z.array(z.number().int().positive().max(2_147_483_647)).max(50).optional(),
 );
 
+export const ENTITY_TYPES = ['HUMAN', 'FAMILY', 'GROUP', 'ORGANIZATION', 'POLITICAL_PARTY', 'OTHER'];
+const spouseEntry = z.object({
+  personId: z.number().int().positive().max(2_147_483_647),
+  marriedOn: dateField,
+  endedOn: dateField,
+  endReason: optEnum(['DIVORCED', 'WIDOWED', 'SEPARATED', 'OTHER']),
+}).strict();
+const spousesField = z.array(spouseEntry).max(20).optional()
+  .refine((a) => !a || new Set(a.map((x) => x.personId)).size === a.length, 'Each spouse can only be listed once');
+
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 export const profileShape = {
+  entityType: z.enum(ENTITY_TYPES).optional(),
   name: z.string().trim().min(1, 'Name is required').max(255),
   nickname: optText(255),
   email: z.preprocess(clean, z.string().email('Enter a valid email address').max(254).nullable().optional()),
@@ -146,7 +157,7 @@ export const profileShape = {
   tags: tagsField,
   fatherId: optId,
   motherId: optId,
-  spouseId: optId,
+  spouses: spousesField,
   childIds: idList,
   siblingIds: idList,
 };
@@ -161,11 +172,12 @@ export const profileListQuery = z.object({
   bloodGroup: z.enum(BLOOD_GROUPS).optional(),
   district: z.string().trim().max(127).optional(),
   tag: z.string().trim().max(40).optional(),
-  sort: z.enum(['name', 'newest', 'oldest', 'id']).default('name'),
+  entityType: z.enum(ENTITY_TYPES).optional(),
+  sort: z.enum(['name', 'newest', 'oldest', 'id']).default('newest'),
   ...pageParams,
 });
 
-export const optionsQuery = z.object({ q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
+export const optionsQuery = z.object({ entityType: z.enum(ENTITY_TYPES).optional(), q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
 
 // Post tags: lower-case, no leading '#', max 10, so "#Family" and "family" are the same tag.
 const postTagsField = z.preprocess(
@@ -235,3 +247,19 @@ export const auditQuery = z.object({
 });
 
 export const searchQuery = z.object({ q: z.string().trim().min(1).max(100), limit: z.coerce.number().int().min(1).max(20).default(6) });
+
+// ---------- links between entities ----------
+export const LINK_TYPES = ['MEMBER_OF', 'SUB_UNIT_OF', 'AFFILIATED_WITH', 'CONNECTED_TO'];
+const entityId = z.number().int().positive().max(2_147_483_647);
+export const linkShape = {
+  fromId: entityId,
+  toId: entityId,
+  linkType: z.enum(LINK_TYPES),
+  role: optText(120),
+  startedOn: dateField,
+  endedOn: dateField,
+  note: optText(1000),
+};
+export const linkCreateSchema = z.object(linkShape).strict();
+export const linkUpdateSchema = z.object({ role: linkShape.role, startedOn: linkShape.startedOn, endedOn: linkShape.endedOn, note: linkShape.note }).strict();
+export const structureQuery = z.object({ depth: z.coerce.number().int().min(1).max(6).default(3) });

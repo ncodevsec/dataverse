@@ -53,6 +53,11 @@ beforeAll(async () => {
 		removeEventListener() {},
 	});
 	window.scrollTo = () => {};
+	window.IntersectionObserver ||= class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	};
 });
 
 const mount = (path) =>
@@ -75,6 +80,12 @@ const PAGES = [
   ['/profiles', /Add profile/],
   ['/profiles/59', /Personal information/],
   ['/profiles/59/edit', /Save changes/],
+  ['/profiles/59', /2nd marriage/],
+  ['/profiles/59', /Memberships & connections/],
+  ['/profiles/70', /Members & connections/],
+  ['/profiles/70', /Structure below/],
+  ['/profiles/70/edit', /Founded \/ established on/],
+  ['/profiles?entityType=GROUP', /Youth Wing/],
   ['/profiles/new', /Create profile/],
   ['/posts', /New post/],
   ['/shekor', /Pick a person to see/],
@@ -88,6 +99,7 @@ const PAGES = [
   ['/admin/contacts', /Tools/],
   ['/admin/audit', /Action|No activity/],
   ['/admin/settings', /Site name/],
+  ['/admin/backup', /Full backup/],
 ];
 
 describe("pages render against the live API", () => {

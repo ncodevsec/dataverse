@@ -37,7 +37,7 @@ export function DescendantNode({ n, depth = 0, focusId }) {
         ) : <span className="h-7 w-7 shrink-0" aria-hidden />}
         <div className="grid min-w-0 max-w-full flex-1 gap-1.5 sm:max-w-xl sm:grid-cols-2">
           <Person p={n} focus={n.id === focusId} />
-          {n.spouse && <Person p={n.spouse} role={n.gender === 'MALE' ? 'Wife' : n.gender === 'FEMALE' ? 'Husband' : 'Spouse'} />}
+          {(n.spouses || []).map((s) => <Person key={s.person.id} p={s.person} role={`${n.gender === 'MALE' ? 'Wife' : n.gender === 'FEMALE' ? 'Husband' : 'Spouse'}${s.endReason ? ` · ${s.endReason.toLowerCase()}` : ''}`} />)}
         </div>
         {kids.length > 0 && !open && <span className="text-xs text-muted">{kids.length} {kids.length === 1 ? 'child' : 'children'}</span>}
       </div>

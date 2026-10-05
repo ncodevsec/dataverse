@@ -20,7 +20,7 @@ export const list = asyncHandler(async (req, res) => {
 });
 
 export const options = asyncHandler(async (req, res) => {
-  res.json({ items: await svc.lookupProfiles(req.valid.query.q, req.valid.query.limit) });
+  res.json({ items: await svc.lookupProfiles(req.valid.query.q, req.valid.query.limit, req.valid.query.entityType) });
 });
 
 export const facets = asyncHandler(async (_req, res) => {

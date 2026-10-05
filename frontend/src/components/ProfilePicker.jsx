@@ -4,7 +4,7 @@ import { useDebounce } from '../hooks/hooks.js';
 import { Avatar, Field, IconButton, cx } from './ui.jsx';
 
 /** Searchable single-profile picker (father / mother / spouse / saved-by...). value = profile id or null. */
-export default function ProfilePicker({ label, value, onChange, initialLabel, error, hint, placeholder = 'Search by name, nickname or ID', onSelect, resetOnPick = false, exclude = [] }) {
+export default function ProfilePicker({ label, value, onChange, initialLabel, error, hint, placeholder = 'Search by name, nickname or ID', onSelect, resetOnPick = false, exclude = [], entityType }) {
   const id = useId();
   const [selected, setSelected] = useState(value ? { id: value, name: initialLabel || `Profile #${value}` } : null);
   const [q, setQ] = useState('');
@@ -23,9 +23,9 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
   useEffect(() => {
     if (!open || dq.trim().length < 1) { setItems([]); return undefined; }
     let live = true;
-    api.get('/profiles/options', { q: dq, limit: 8 + exclude.length }).then((d) => { if (live) { setItems(d.items.filter((x) => !exclude.includes(x.id)).slice(0, 8)); setActive(0); } }).catch(() => {});
+    api.get('/profiles/options', { q: dq, limit: 8 + exclude.length, entityType }).then((d) => { if (live) { setItems(d.items.filter((x) => !exclude.includes(x.id)).slice(0, 8)); setActive(0); } }).catch(() => {});
     return () => { live = false; };
-  }, [dq, open]);
+  }, [dq, open, entityType]);
 
   useEffect(() => {
     const close = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };

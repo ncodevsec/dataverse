@@ -16,3 +16,4 @@ legacy/
 .DS_Store
 *.log
 coverage/
+backups/

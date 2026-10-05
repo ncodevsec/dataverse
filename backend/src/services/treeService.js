@@ -57,8 +57,15 @@ export async function getTree(id, { up = 3, down = 2 } = {}) {
   // load every person once, plus spouses of descendants
   const wanted = new Set([...lineageIds, ...ancIds, ...descIds]);
   const first = await summariesByIds([...wanted]);
-  const spouseIds = descIds.map((d) => first.get(d)?.spouseId).filter((v) => v && !first.has(v));
+  const marriages = descIds.length
+    ? (await query(`SELECT person_a, person_b, married_on, ended_on, end_reason FROM marriages WHERE person_a = ANY($1::int[]) OR person_b = ANY($1::int[]) ORDER BY married_on NULLS LAST, id`, [descIds])).rows
+    : [];
+  const partnerOf = (m, pid) => (m.person_a === pid ? m.person_b : m.person_a);
+  const spouseIds = marriages.flatMap((m) => [m.person_a, m.person_b]).filter((v) => !first.has(v));
   const people = new Map([...first, ...(await summariesByIds([...new Set(spouseIds)]))]);
+  const spousesOf = (pid) => marriages.filter((m) => m.person_a === pid || m.person_b === pid)
+    .map((m) => ({ person: people.get(partnerOf(m, pid)) || null, marriedOn: m.married_on, endedOn: m.ended_on, endReason: m.end_reason, current: !m.ended_on && !m.end_reason }))
+    .filter((x) => x.person);
 
   // pedigree
   const buildAnc = (pid, depth, seen = new Set()) => {
@@ -94,6 +101,7 @@ export async function getTree(id, { up = 3, down = 2 } = {}) {
     return {
       ...person,
       spouse: person.spouseId ? people.get(person.spouseId) || null : null,
+      spouses: spousesOf(pid),
       children: kids.map((k) => buildDesc(k.id, depth + 1, next)).filter(Boolean),
     };
   };

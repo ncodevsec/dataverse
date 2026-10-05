@@ -105,7 +105,7 @@ try {
     const existing = (await client.query('SELECT count(*)::int AS n FROM profiles')).rows[0].n;
     if (existing && !flag('truncate')) throw new Error(`profiles already contains ${existing} rows. Re-run with --truncate to replace the data (user accounts are kept).`);
     if (flag('truncate')) {
-      await client.query('TRUNCATE profile_photos, posts, caller_contacts, profiles RESTART IDENTITY CASCADE');
+      await client.query('TRUNCATE profile_photos, posts, caller_contacts, marriages, entity_links, profiles RESTART IDENTITY CASCADE');
       console.log('Existing profile/contact/post data truncated.');
     }
 
@@ -162,6 +162,8 @@ try {
               marital_status = CASE WHEN v.s IS NOT NULL AND p.marital_status = 'SINGLE' THEN 'MARRIED' ELSE p.marital_status END
          FROM unnest($1::int[], $2::int[], $3::int[], $4::int[]) AS v(id, f, m, s) WHERE p.id = v.id`,
       [relIds, fathers, mothers, spouses]);
+    // every legacy spouse link becomes a marriage record (profiles.spouse_id stays as the current spouse)
+    await client.query(`INSERT INTO marriages (person_a, person_b) SELECT DISTINCT LEAST(id, spouse_id), GREATEST(id, spouse_id) FROM profiles WHERE spouse_id IS NOT NULL ON CONFLICT DO NOTHING`);
     await client.query(`SELECT setval(pg_get_serial_sequence('profiles', 'id'), (SELECT max(id) FROM profiles))`);
 
     // ---------- caller contacts
