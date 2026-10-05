@@ -2,6 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { query } from '../db/pool.js';
 import { getSettings, publicSettings } from '../services/settings.js';
 import { lookupProfiles } from '../services/profileService.js';
+import { lookupOrgs } from '../services/orgService.js';
 import { searchContacts } from '../services/callerService.js';
 import { getTree } from '../services/treeService.js';
 
@@ -15,11 +16,12 @@ export const healthDb = asyncHandler(async (_req, res) => {
 
 export const search = asyncHandler(async (req, res) => {
   const { q, limit } = req.valid.query;
-  const [profiles, contacts] = await Promise.all([
+  const [profiles, organizations, contacts] = await Promise.all([
     lookupProfiles(q, limit),
+    lookupOrgs(q, limit),
     searchContacts({ q, page: 1, limit, sort: 'name' }, req.user),
   ]);
-  res.json({ q, profiles, contacts: contacts.items, contactsTotal: contacts.total });
+  res.json({ q, profiles, organizations, contacts: contacts.items, contactsTotal: contacts.total });
 });
 
 export const tree = asyncHandler(async (req, res) => {
@@ -28,7 +30,7 @@ export const tree = asyncHandler(async (req, res) => {
 
 export const dashboard = asyncHandler(async (_req, res) => {
   const [totals, recent] = await Promise.all([
-    query(`SELECT (SELECT count(*) FROM profiles)::int AS profiles, (SELECT count(*) FROM caller_contacts)::int AS contacts,
+    query(`SELECT (SELECT count(*) FROM profiles)::int AS profiles, (SELECT count(*) FROM organizations)::int AS organizations, (SELECT count(*) FROM caller_contacts)::int AS contacts,
                   (SELECT count(*) FROM profiles WHERE father_id IS NOT NULL OR mother_id IS NOT NULL)::int AS connected`),
     query(`SELECT p.id, p.name, p.nickname, p.gender, p.occupation, p.district, p.photo_updated_at FROM profiles p ORDER BY p.created_at DESC, p.id DESC LIMIT 6`),
   ]);

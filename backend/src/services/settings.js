@@ -8,6 +8,7 @@ export const DEFAULTS = {
   site_description: 'Family profiles, generation trees and a shared contact directory.',
   registration_enabled: true,
   allow_user_contributions: true,
+  blur_female_photos: false,
   default_theme: 'system',
   contact_email: '',
 };
@@ -42,4 +43,5 @@ export const publicSettings = (s) => ({
   siteDescription: s.site_description,
   registrationEnabled: s.registration_enabled,
   defaultTheme: s.default_theme,
+  blurFemalePhotos: !!s.blur_female_photos,
 });

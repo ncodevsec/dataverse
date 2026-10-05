@@ -13,6 +13,7 @@ export const pageParams = {
   page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 };
+export const pageParamsQuery = z.object({ q: z.string().trim().max(100).optional(), ...pageParams });
 export const idParam = z.object({ id: z.coerce.number().int().positive().max(2_147_483_647) });
 export const uuidParam = z.object({ id: z.string().uuid() });
 
@@ -113,7 +114,6 @@ const idList = z.preprocess(
   z.array(z.number().int().positive().max(2_147_483_647)).max(50).optional(),
 );
 
-export const ENTITY_TYPES = ['HUMAN', 'FAMILY', 'GROUP', 'ORGANIZATION', 'POLITICAL_PARTY', 'OTHER'];
 const spouseEntry = z.object({
   personId: z.number().int().positive().max(2_147_483_647),
   marriedOn: dateField,
@@ -125,8 +125,14 @@ const spousesField = z.array(spouseEntry).max(20).optional()
 
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
+/** http(s) only; a bare "example.com" becomes https://example.com. Blocks javascript:, data: and friends. */
+export const websiteField = z.preprocess(
+  (v) => { const c = clean(v); if (typeof c !== 'string') return c; return /^[a-z][a-z0-9+.-]*:/i.test(c) ? c : `https://${c}`; },
+  z.string().max(255).refine((u) => { try { const x = new URL(u); return ['http:', 'https:'].includes(x.protocol) && x.hostname.includes('.'); } catch { return false; } }, 'Enter a valid website address (http or https)').nullable().optional(),
+);
+
 export const profileShape = {
-  entityType: z.enum(ENTITY_TYPES).optional(),
+  website: websiteField,
   name: z.string().trim().min(1, 'Name is required').max(255),
   nickname: optText(255),
   email: z.preprocess(clean, z.string().email('Enter a valid email address').max(254).nullable().optional()),
@@ -172,12 +178,11 @@ export const profileListQuery = z.object({
   bloodGroup: z.enum(BLOOD_GROUPS).optional(),
   district: z.string().trim().max(127).optional(),
   tag: z.string().trim().max(40).optional(),
-  entityType: z.enum(ENTITY_TYPES).optional(),
   sort: z.enum(['name', 'newest', 'oldest', 'id']).default('newest'),
   ...pageParams,
 });
 
-export const optionsQuery = z.object({ entityType: z.enum(ENTITY_TYPES).optional(), q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
+export const optionsQuery = z.object({ q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
 
 // Post tags: lower-case, no leading '#', max 10, so "#Family" and "family" are the same tag.
 const postTagsField = z.preprocess(
@@ -185,17 +190,20 @@ const postTagsField = z.preprocess(
   z.array(z.string().trim().transform((t) => t.replace(/^#+/, '').toLowerCase()).pipe(z.string().min(1).max(40))).max(10).optional()
     .transform((a) => (a ? [...new Set(a)] : a)),
 );
+const refIdOpt = () => z.number().int().positive().max(2_147_483_647).optional();
 export const postSchema = z.object({
   title: z.string().trim().min(1, 'Title is required').max(200),
   content: z.string().max(20_000).default(''),
   status: z.enum(['published', 'draft', 'archived']).default('published'),
   tags: postTagsField,
 }).strict();
-export const postCreateSchema = postSchema.extend({ profileId: z.coerce.number().int().positive().max(2_147_483_647) }).strict();
+export const postCreateSchema = postSchema.extend({ profileId: refIdOpt(), organizationId: refIdOpt() }).strict()
+  .refine((b) => (b.profileId == null) !== (b.organizationId == null), { message: 'Choose exactly one person or organization', path: ['profileId'] });
 export const postListQuery = z.object({
   q: z.string().trim().max(100).optional(),
   tag: z.string().trim().toLowerCase().max(40).optional(),
   profileId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
+  organizationId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
   mine: z.enum(['1', 'true']).optional(),
   ...pageParams,
 });
@@ -235,6 +243,7 @@ export const siteSettingsSchema = z.object({
   site_description: z.string().trim().max(240),
   registration_enabled: z.boolean(),
   allow_user_contributions: z.boolean(),
+  blur_female_photos: z.boolean(),
   default_theme: z.enum(THEMES),
   contact_email: z.preprocess((v) => (v === '' ? '' : v), z.union([z.literal(''), emailField])),
 }).partial().strict();
@@ -248,18 +257,39 @@ export const auditQuery = z.object({
 
 export const searchQuery = z.object({ q: z.string().trim().min(1).max(100), limit: z.coerce.number().int().min(1).max(20).default(6) });
 
-// ---------- links between entities ----------
-export const LINK_TYPES = ['MEMBER_OF', 'SUB_UNIT_OF', 'AFFILIATED_WITH', 'CONNECTED_TO'];
-const entityId = z.number().int().positive().max(2_147_483_647);
-export const linkShape = {
-  fromId: entityId,
-  toId: entityId,
-  linkType: z.enum(LINK_TYPES),
-  role: optText(120),
-  startedOn: dateField,
-  endedOn: dateField,
-  note: optText(1000),
+// ---------- organizations ----------
+export const ORG_TYPES = ['COMPANY', 'ORGANIZATION', 'POLITICAL_PARTY', 'GROUP', 'NGO', 'GOVERNMENT', 'EDUCATIONAL', 'OTHER'];
+export const orgShape = {
+  orgType: z.enum(ORG_TYPES),
+  name: z.string().trim().min(1, 'Name is required').max(255),
+  shortName: optText(120),
+  email: z.preprocess(clean, z.string().email('Enter a valid email address').max(254).nullable().optional()),
+  phone: optText(32),
+  website: websiteField,
+  foundedOn: dateField,
+  dissolvedOn: dateField,
+  street: optText(255), unionName: optText(127), subDistrict: optText(127), district: optText(127), state: optText(127), zip: optText(16), country: optText(127),
+  presentStreet: optText(255), presentCity: optText(127),
+  socialLinks: socialLinksField,
+  about: optText(10_000),
+  tags: tagsField,
 };
-export const linkCreateSchema = z.object(linkShape).strict();
-export const linkUpdateSchema = z.object({ role: linkShape.role, startedOn: linkShape.startedOn, endedOn: linkShape.endedOn, note: linkShape.note }).strict();
+export const orgCreateSchema = z.object({ ...orgShape, orgType: orgShape.orgType.default('ORGANIZATION') }).strict();
+export const orgUpdateSchema = z.object(orgShape).partial().strict();
+export const orgListQuery = z.object({
+  q: z.string().trim().max(100).optional(),
+  orgType: z.enum(ORG_TYPES).optional(),
+  tag: z.string().trim().max(40).optional(),
+  sort: z.enum(['name', 'newest', 'oldest']).default('newest'),
+  ...pageParams,
+});
+export const orgOptionsQuery = z.object({ q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
+
+// ---------- human <-> organization memberships, organization <-> organization links ----------
+const refId = z.number().int().positive().max(2_147_483_647);
+const linkExtras = { role: optText(120), startedOn: dateField, endedOn: dateField, note: optText(1000) };
+export const MEMBERSHIP_RELATIONS = ['MEMBER', 'AFFILIATED', 'CONNECTED'];
+export const membershipCreateSchema = z.object({ humanId: refId, organizationId: refId, relation: z.enum(MEMBERSHIP_RELATIONS).default('MEMBER'), ...linkExtras }).strict();
+export const orgLinkCreateSchema = z.object({ fromId: refId, toId: refId, linkType: z.enum(['SUB_UNIT_OF', 'MEMBER_OF', 'AFFILIATED_WITH', 'CONNECTED_TO']), ...linkExtras }).strict();
+export const linkUpdateSchema = z.object(linkExtras).strict();
 export const structureQuery = z.object({ depth: z.coerce.number().int().min(1).max(6).default(3) });

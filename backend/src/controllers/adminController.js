@@ -195,6 +195,7 @@ export const stats = asyncHandler(async (_req, res) => {
       (SELECT count(*) FROM users WHERE NOT is_active)::int AS inactive_users,
       (SELECT count(*) FROM users WHERE approval_status = 'PENDING')::int AS pending_users,
       (SELECT count(*) FROM profiles)::int AS profiles,
+      (SELECT count(*) FROM organizations)::int AS organizations,
       (SELECT count(*) FROM profiles WHERE photo_updated_at IS NOT NULL)::int AS profiles_with_photo,
       (SELECT count(*) FROM profiles WHERE father_id IS NOT NULL OR mother_id IS NOT NULL)::int AS profiles_with_parents,
       (SELECT count(*) FROM profiles WHERE spouse_id IS NOT NULL)::int AS married,
@@ -214,7 +215,7 @@ export const stats = asyncHandler(async (_req, res) => {
   const t = totals.rows[0];
   res.json({
     totals: {
-      users: t.users, admins: t.admins, inactiveUsers: t.inactive_users, pendingUsers: t.pending_users, profiles: t.profiles, profilesWithPhoto: t.profiles_with_photo,
+      users: t.users, admins: t.admins, inactiveUsers: t.inactive_users, pendingUsers: t.pending_users, profiles: t.profiles, organizations: t.organizations, profilesWithPhoto: t.profiles_with_photo,
       profilesWithParents: t.profiles_with_parents, married: t.married, contacts: t.contacts, uniqueNumbers: t.unique_numbers,
       linkedContacts: t.linked_contacts, posts: t.posts, auditEvents: t.audit_events,
     },

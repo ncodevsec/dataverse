@@ -105,7 +105,7 @@ try {
     const existing = (await client.query('SELECT count(*)::int AS n FROM profiles')).rows[0].n;
     if (existing && !flag('truncate')) throw new Error(`profiles already contains ${existing} rows. Re-run with --truncate to replace the data (user accounts are kept).`);
     if (flag('truncate')) {
-      await client.query('TRUNCATE profile_photos, posts, caller_contacts, marriages, entity_links, profiles RESTART IDENTITY CASCADE');
+      await client.query('TRUNCATE profile_photos, posts, caller_contacts, marriages, memberships, profiles RESTART IDENTITY CASCADE');
       console.log('Existing profile/contact/post data truncated.');
     }
 
