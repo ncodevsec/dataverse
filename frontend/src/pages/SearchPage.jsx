@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import ProfileCard from '../components/ProfileCard.jsx';
+import OrgCard from '../components/OrgCard.jsx';
 import { ContactRow } from './CallerId.jsx';
 import { Card, EmptyState, ErrorState, LoadingBlock, PageHeader, SearchInput } from '../components/ui.jsx';
 import { useSite } from '../context/AppContext.jsx';
@@ -28,6 +29,10 @@ export default function SearchPage() {
               <section>
                 <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">People</h2><Link to={`/profiles?q=${encodeURIComponent(q)}`} className="text-sm text-accent hover:underline">All matching profiles</Link></div>
                 {data.profiles.length === 0 ? <p className="text-sm text-muted">No people match “{q}”.</p> : <div className="grid gap-3 sm:grid-cols-2">{data.profiles.map((p) => <ProfileCard key={p.id} p={p} />)}</div>}
+              </section>
+              <section>
+                <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">Organizations</h2><Link to={`/organizations?q=${encodeURIComponent(q)}`} className="text-sm text-accent hover:underline">All matching organizations</Link></div>
+                {data.organizations.length === 0 ? <p className="text-sm text-muted">No organizations match “{q}”.</p> : <div className="grid gap-3 sm:grid-cols-2">{data.organizations.map((o) => <OrgCard key={o.id} o={o} />)}</div>}
               </section>
               <section>
                 <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">Contacts <span className="font-normal text-muted">({data.contactsTotal.toLocaleString()})</span></h2><Link to={`/caller-id?q=${encodeURIComponent(q)}`} className="text-sm text-accent hover:underline">Open in Caller ID</Link></div>

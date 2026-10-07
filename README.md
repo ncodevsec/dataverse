@@ -160,6 +160,14 @@ Safety rails: admins cannot demote/deactivate/delete themselves, and the last ac
 - **Profiles page:** newest first by default, four layouts (grid horizontal / grid vertical / rows cards / rows compact; remembered per browser) and infinite scrolling (also Posts and Caller ID).
 - **Backup (Admin → Backup, or `npm run backup`):** one ZIP named `dataverse-backup_YYYY-MM-DD_HH-MM-SS_UTC.zip` with `database.sql` (restorable data), `img/` (all profile photos, plus any files in a repo-level `img/` folder) and a README. Restore: empty DB → `npm run db:migrate` (without `BOOTSTRAP_ADMIN_*`) → `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database.sql`. On Netlify the in-app download only works for small databases (10 s / 6 MB limits); use `npm run backup` locally for big ones. Backups hold personal data and password hashes: never commit them (`backups/` is git-ignored).
 
+## 4d. Humans vs organizations, photo privacy, website (migration 004)
+
+- **Two entity kinds, separate tables and pages.** `profiles` (+ `/profiles`) holds people only. `organizations` (+ `/organizations`) holds companies, organizations, political parties, groups, NGOs, government bodies, educational institutions and others. There is no Family type. Organizations have no NID, education or work fields; they have a short name, founded/dissolved dates, logo, website, social links, two addresses, tags and posts.
+- **Connections.** `memberships` links a person to an organization (member / affiliated / connected, with role, dates, note). `organization_links` links organizations to each other (sub-unit of, member of, affiliated, connected). Sub-unit loops are rejected; any organization can be the root of a structure tree.
+- **Migration 004 converts existing data in place** (same ids): non-human profiles become organizations (Family -> Group), with their logo, posts and contact numbers; human<->organization links (either direction) become memberships; organization<->organization links are copied; human<->human "connections" (cannot be mapped) are kept in `entity_links_unmapped`. People, family links and marriages are untouched.
+- **Female photo blur** (Admin -> Site settings -> Privacy): when on, all female profile photos are blurred everywhere; a member opens the profile, clicks the photo, and confirms View in a popup to see the original. This is a display-level privacy feature: the image files are still delivered to signed-in members, so it is not access control.
+- **Website** field for people and organizations (http/https only).
+
 ## 5. Environment variables
 
 See [`.env.example`](.env.example) for the annotated list. Required: `DATABASE_URL`, `JWT_SECRET` (≥ 32 chars). The API refuses to start with a missing/short secret.

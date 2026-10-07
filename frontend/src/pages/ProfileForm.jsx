@@ -3,16 +3,15 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ProfilePicker from '../components/ProfilePicker.jsx';
 import Icon from '../components/Icon.jsx';
 import PhotoCropper from '../components/PhotoCropper.jsx';
+import SocialLinksEditor, { NETWORKS, emptySocial } from '../components/SocialLinksEditor.jsx';
 import { Avatar, Button, Card, ErrorState, Field, IconButton, LoadingBlock, PageHeader, SelectField, TextArea, TextField, apiErrors } from '../components/ui.jsx';
 import { useAuth, useSite, useToast } from '../context/AppContext.jsx';
 import { useFetch, useTitle } from '../hooks/hooks.js';
 import { api } from '../lib/api.js';
 import { compressImage } from '../lib/image.js';
-import { ENTITY_TYPES, POLITICAL_VIEWS, RELIGIONS, withCurrent } from '../lib/options.js';
+import { POLITICAL_VIEWS, RELIGIONS, withCurrent } from '../lib/options.js';
 
-const NETWORKS = [['facebook', 'Facebook', 'Profile link or username'], ['instagram', 'Instagram', 'Profile link or @username'], ['tiktok', 'TikTok', 'Profile link or @username']];
-const emptySocial = () => Object.fromEntries(NETWORKS.map(([k]) => [k, ['']]));
-const EMPTY = { entityType: 'HUMAN', name: '', nickname: '', gender: '', maritalStatus: '', dob: '', dateOfDeath: '', bloodGroup: '', religion: '', politicalView: '', phone: '', email: '', lineage: '',
+const EMPTY = { website: '', name: '', nickname: '', gender: '', maritalStatus: '', dob: '', dateOfDeath: '', bloodGroup: '', religion: '', politicalView: '', phone: '', email: '', lineage: '',
   fatherId: null, motherId: null, spouses: [], presentStreet: '', presentCity: '', street: '', unionName: '', subDistrict: '', district: '', state: '', zip: '', country: '',
   educationLevel: '', educationGroup: '', occupation: '', nid: '', socialLinks: emptySocial(), childIds: [], siblingIds: [], about: '', tags: '' };
 const ADDRESS_FIELDS = ['street', 'unionName', 'subDistrict', 'district', 'state', 'zip', 'country', 'lineage'];
@@ -33,34 +32,6 @@ function toForm(p, fam) {
 }
 
 const sameIds = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
-
-/** Several accounts of one social network: one input per account, with add / remove. */
-function SocialLinksEditor({ value, onChange, errors }) {
-  const set = (net, list) => onChange({ ...value, [net]: list });
-  return (
-    <div className="space-y-5 sm:col-span-2">
-      {NETWORKS.map(([net, label, hint]) => {
-        const list = value[net] || [''];
-        return (
-          <fieldset key={net}>
-            <legend className="mb-1.5 text-sm font-medium">{label}{list.filter(Boolean).length > 1 && <span className="ml-1 text-muted">({list.filter(Boolean).length} accounts)</span>}</legend>
-            <div className="space-y-2">
-              {list.map((v, i) => (
-                <div key={i} className="flex items-start gap-1">
-                  <TextField className="flex-1" aria-label={`${label} account ${i + 1}`} value={v} placeholder={i === 0 ? hint : `Another ${label} account`} maxLength={255}
-                    onChange={(e) => set(net, list.map((x, j) => (j === i ? e.target.value : x)))} />
-                  {list.length > 1 && <IconButton icon="x" label={`Remove ${label} account ${i + 1}`} className="mt-0.5" onClick={() => set(net, list.filter((_, j) => j !== i))} />}
-                </div>
-              ))}
-            </div>
-            {list.length < 10 && <Button type="button" size="sm" variant="ghost" icon="plus" className="mt-1 -ml-2" onClick={() => set(net, [...list, ''])}>Add another {label} account</Button>}
-          </fieldset>
-        );
-      })}
-      {errors?.socialLinks && <p className="text-xs text-danger" role="alert">{String(errors.socialLinks)}</p>}
-    </div>
-  );
-}
 
 const END_REASONS = [['', 'Still married'], ['DIVORCED', 'Divorced'], ['WIDOWED', 'Widowed (spouse passed away)'], ['SEPARATED', 'Separated'], ['OTHER', 'Ended (other)']];
 
@@ -86,7 +57,7 @@ function SpousesEditor({ value, onChange, selfId, error }) {
           ))}
         </ul>
       )}
-      <ProfilePicker entityType="HUMAN" label="" value={null} onChange={() => {}} resetOnPick exclude={[...value.map((x) => x.personId), ...(selfId ? [selfId] : [])]} placeholder="Search to add a spouse…"
+      <ProfilePicker label="" value={null} onChange={() => {}} resetOnPick exclude={[...value.map((x) => x.personId), ...(selfId ? [selfId] : [])]} placeholder="Search to add a spouse…"
         onSelect={(p) => onChange([...value, { personId: p.id, name: p.name, marriedOn: '', endedOn: '', endReason: '' }])} />
     </Field>
   );
@@ -106,7 +77,7 @@ function RelativesPicker({ label, ids, names, onAdd, onRemove, selfId, hint, err
           ))}
         </ul>
       )}
-      <ProfilePicker entityType="HUMAN" label="" value={null} onChange={() => {}} onSelect={onAdd} resetOnPick exclude={[...ids, ...(selfId ? [selfId] : [])]} placeholder={`Search to add ${label.toLowerCase()}…`} />
+      <ProfilePicker label="" value={null} onChange={() => {}} onSelect={onAdd} resetOnPick exclude={[...ids, ...(selfId ? [selfId] : [])]} placeholder={`Search to add ${label.toLowerCase()}…`} />
     </Field>
   );
 }
@@ -184,7 +155,6 @@ export default function ProfileForm() {
     for (const k of ['childIds', 'siblingIds']) if (sameIds(form[k], initialRels.current[k])) delete payload[k];
     if (JSON.stringify(form.spouses) === initialRels.current.spouses) delete payload.spouses;
     else payload.spouses = form.spouses.map((x) => ({ personId: x.personId, marriedOn: x.marriedOn || null, endedOn: x.endedOn || null, endReason: x.endReason || null }));
-    if (form.entityType !== 'HUMAN') for (const k of ['fatherId', 'motherId', 'spouses', 'childIds', 'siblingIds']) delete payload[k]; // family links are for people only
     try {
       const res = editing ? await api.patch(`/profiles/${id}`, payload) : await api.post('/profiles', payload);
       const pid = res.profile.id;
@@ -204,7 +174,6 @@ export default function ProfileForm() {
   if (editing && existing.data && !existing.data.profile.permissions.canEdit) return <ErrorState error={{ message: 'You can only edit profiles you created or that are linked to your account.' }} />;
 
   const currentPhoto = photoPreview || (!removePhoto && editing ? existing.data?.profile.photoUrl : null);
-  const isHuman = form.entityType === 'HUMAN';
   const field = (k, label, extra = {}) => <TextField label={label} value={form[k]} onChange={set(k)} error={errors[k]} {...extra} />;
 
   return (
@@ -216,7 +185,7 @@ export default function ProfileForm() {
       {Object.keys(errors).length > 0 && <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm">Some fields need attention: {Object.entries(errors).map(([k, v]) => `${k} (${v})`).join('; ')}</div>}
 
       <Card className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-        <Avatar src={currentPhoto} name={form.name || 'New'} size="xl" />
+        <Avatar src={currentPhoto} name={form.name || 'New'} size="xl" gender={form.gender} />
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Photo</h2>
           <p className="mb-3 text-sm text-muted">JPEG, PNG or WebP. You can crop it, and it is compressed in your browser when you save.</p>
@@ -230,24 +199,20 @@ export default function ProfileForm() {
       </Card>
 
       <Section title="Basics">
-        <SelectField label="Type" value={form.entityType} onChange={set('entityType')} hint={editing ? undefined : 'Choose what this profile represents. People can have family links; every type can be connected to other entities.'}>
-          {ENTITY_TYPES.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-        </SelectField>
-        {field('name', isHuman ? 'Full name' : 'Name', { required: true })}
+        {field('name', 'Full name', { required: true, className: 'sm:col-span-2' })}
         {field('nickname', 'Nickname')}
-        {isHuman && <SelectField label="Gender" value={form.gender || ''} onChange={set('gender')} error={errors.gender}><option value="">Not specified</option><option value="MALE">Male</option><option value="FEMALE">Female</option></SelectField>}
-        {field('dob', isHuman ? 'Date of birth' : 'Founded / established on', { type: 'date', max: new Date().toISOString().slice(0, 10) })}
-        {field('dateOfDeath', isHuman ? 'Date of death' : 'Dissolved / ended on', { type: 'date', min: form.dob || undefined, max: new Date().toISOString().slice(0, 10), hint: isHuman ? 'Leave empty if the person is alive' : 'Leave empty if still active' })}
-        {isHuman && <SelectField label="Blood group" value={form.bloodGroup || ''} onChange={set('bloodGroup')}><option value="">Unknown</option>{['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((b) => <option key={b}>{b}</option>)}</SelectField>}
-        {isHuman && <SelectField label="Marital status" value={form.maritalStatus || ''} onChange={set('maritalStatus')}><option value="">Not specified</option><option value="SINGLE">Unmarried</option><option value="MARRIED">Married</option><option value="DIVORCED">Divorced</option><option value="WIDOWED">Widowed</option></SelectField>}
-        {isHuman && <SelectField label="Religion" value={form.religion || ''} onChange={set('religion')} error={errors.religion}><option value="">Not specified</option>{withCurrent(RELIGIONS, form.religion).map((r) => <option key={r} value={r}>{r}</option>)}</SelectField>}
-        {isHuman && <SelectField label="Political view" value={form.politicalView || ''} onChange={set('politicalView')} error={errors.politicalView}><option value="">Not specified</option>{withCurrent(POLITICAL_VIEWS, form.politicalView).map((r) => <option key={r} value={r}>{r}</option>)}</SelectField>}
+        <SelectField label="Gender" value={form.gender || ''} onChange={set('gender')} error={errors.gender}><option value="">Not specified</option><option value="MALE">Male</option><option value="FEMALE">Female</option></SelectField>
+        {field('dob', 'Date of birth', { type: 'date', max: new Date().toISOString().slice(0, 10) })}
+        {field('dateOfDeath', 'Date of death', { type: 'date', min: form.dob || undefined, max: new Date().toISOString().slice(0, 10), hint: 'Leave empty if the person is alive' })}
+        <SelectField label="Blood group" value={form.bloodGroup || ''} onChange={set('bloodGroup')}><option value="">Unknown</option>{['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((b) => <option key={b}>{b}</option>)}</SelectField>
+        <SelectField label="Marital status" value={form.maritalStatus || ''} onChange={set('maritalStatus')}><option value="">Not specified</option><option value="SINGLE">Unmarried</option><option value="MARRIED">Married</option><option value="DIVORCED">Divorced</option><option value="WIDOWED">Widowed</option></SelectField>
+        <SelectField label="Religion" value={form.religion || ''} onChange={set('religion')} error={errors.religion}><option value="">Not specified</option>{withCurrent(RELIGIONS, form.religion).map((r) => <option key={r} value={r}>{r}</option>)}</SelectField>
+        <SelectField label="Political view" value={form.politicalView || ''} onChange={set('politicalView')} error={errors.politicalView}><option value="">Not specified</option>{withCurrent(POLITICAL_VIEWS, form.politicalView).map((r) => <option key={r} value={r}>{r}</option>)}</SelectField>
       </Section>
 
-      {isHuman && (
       <Section title="Family" hint="Search by name or Dataverse ID. Marriages and parent links appear on both profiles.">
-        <ProfilePicker entityType="HUMAN" label="Father" value={form.fatherId} onChange={setId('fatherId')} initialLabel={labels.fatherId} error={errors.fatherId} />
-        <ProfilePicker entityType="HUMAN" label="Mother" value={form.motherId} onChange={setId('motherId')} initialLabel={labels.motherId} error={errors.motherId} />
+        <ProfilePicker label="Father" value={form.fatherId} onChange={setId('fatherId')} initialLabel={labels.fatherId} error={errors.fatherId} />
+        <ProfilePicker label="Mother" value={form.motherId} onChange={setId('motherId')} initialLabel={labels.motherId} error={errors.motherId} />
         <SpousesEditor value={form.spouses} onChange={(v) => setForm((f) => ({ ...f, spouses: v }))} selfId={editing ? Number(id) : null} error={errors.spouses} />
         {field('lineage', 'Lineage / house (বংশ/বাড়ি)')}
         <RelativesPicker label="Children" ids={form.childIds} names={names} selfId={editing ? Number(id) : null} error={errors.childIds}
@@ -259,10 +224,10 @@ export default function ProfileForm() {
           onAdd={(p) => { setNames((n) => ({ ...n, [p.id]: p.name })); setForm((f) => (f.siblingIds.includes(p.id) ? f : { ...f, siblingIds: [...f.siblingIds, p.id] })); }}
           onRemove={(rid) => setForm((f) => ({ ...f, siblingIds: f.siblingIds.filter((x) => x !== rid) }))} />
       </Section>
-      )}
 
       <Section title="Contact">
         {field('phone', 'Phone', { type: 'tel', autoComplete: 'off' })}
+        {field('website', 'Website', { type: 'url', placeholder: 'https://example.com', hint: 'Personal site, blog or portfolio' })}
         {field('email', 'Email', { type: 'email' })}
         <SocialLinksEditor value={form.socialLinks} onChange={(v) => setForm((f) => ({ ...f, socialLinks: v }))} errors={errors} />
       </Section>
@@ -279,13 +244,11 @@ export default function ProfileForm() {
         {field('presentCity', 'City')}
       </Section>
 
-      {isHuman && (
       <Section title="Education & work">
         {field('educationLevel', 'Education level')}{field('educationGroup', 'Group / subject')}
         {field('occupation', 'Occupation', { className: 'sm:col-span-2' })}
         {existing.data?.profile.nidHidden ? <p className="text-sm text-muted sm:col-span-2">National ID is hidden for your account.</p> : field('nid', 'National ID (NID)', { className: 'sm:col-span-2', hint: isAdmin ? 'Visible to administrators and whoever created this profile' : 'Only you and administrators can see this' })}
       </Section>
-      )}
 
       <Card className="p-5">
         <h2 className="mb-3 text-base font-semibold">About</h2>

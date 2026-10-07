@@ -27,5 +27,8 @@
   },
   "dependencies": {
     "serverless-http": "^3.2.0"
+  },
+  "overrides": {
+    "shell-quote": "^1.12.0"
   }
 }

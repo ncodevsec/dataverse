@@ -18,6 +18,7 @@ export default function Dashboard() {
     { to: '/shekor', icon: 'tree', title: 'Shekor', text: 'Explore generations, parents, spouses and children as a family tree.', stat: data && `${data.totals.connected} linked to parents` },
     { to: '/caller-id', icon: 'phone', title: 'Caller ID', text: 'Find out who a number belongs to, or search contacts by name.', stat: data && `${data.totals.contacts.toLocaleString()} contacts` },
     { to: '/profiles', icon: 'users', title: 'Profiles', text: 'Browse and manage detailed personal profiles.', stat: data && `${data.totals.profiles.toLocaleString()} people` },
+    { to: '/organizations', icon: 'building', title: 'Organizations', text: 'Companies, political parties, groups and their members.', stat: data && `${data.totals.organizations.toLocaleString()} organizations` },
     { to: '/search', icon: 'search', title: 'Search', text: 'One search box across people and contacts.' },
     { to: '/settings', icon: 'settings', title: 'Settings', text: 'Theme, account details and password.' },
     ...(isAdmin ? [{ to: '/admin', icon: 'shield', title: 'Admin', text: 'Users, data, audit log and site settings.' }] : []),
@@ -39,7 +40,7 @@ export default function Dashboard() {
           <Link key={t.to} to={t.to} className="group rounded-2xl border border-line bg-surface p-5 transition-colors hover:border-accent/60">
             <div className="flex items-center justify-between">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent"><Icon name={t.icon} /></span>
-              {t.stat ? <span className="text-xs text-muted">{t.stat}</span> : loading && t.stat === undefined && ['/shekor', '/caller-id', '/profiles'].includes(t.to) ? <Skeleton className="h-4 w-20" /> : null}
+              {t.stat ? <span className="text-xs text-muted">{t.stat}</span> : loading && t.stat === undefined && ['/shekor', '/caller-id', '/profiles', '/organizations'].includes(t.to) ? <Skeleton className="h-4 w-20" /> : null}
             </div>
             <h2 className="mt-4 text-lg font-semibold group-hover:text-accent">{t.title}</h2>
             <p className="mt-1 text-sm text-muted">{t.text}</p>
@@ -54,7 +55,7 @@ export default function Dashboard() {
             {loading && !data ? Array.from({ length: 4 }, (_, i) => <div key={i} className="p-3"><Skeleton className="h-10" /></div>) :
               data.recent.map((p) => (
                 <Link key={p.id} to={`/profiles/${p.id}`} className="flex items-center gap-3 p-3 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-surface-2">
-                  <Avatar src={p.photoUrl} name={p.name} size="sm" />
+                  <Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} />
                   <div className="min-w-0"><p className="truncate font-medium">{p.name}</p><p className="truncate text-xs text-muted">{[p.occupation, p.district].filter(Boolean).join(' · ') || `#${p.id}`}</p></div>
                 </Link>
               ))}

@@ -12,6 +12,9 @@ import ProfileView from './pages/ProfileView.jsx';
 import ProfileForm from './pages/ProfileForm.jsx';
 import Shekor from './pages/Shekor.jsx';
 import Posts from './pages/Posts.jsx';
+import Organizations from './pages/Organizations.jsx';
+import OrganizationView from './pages/OrganizationView.jsx';
+import OrganizationForm from './pages/OrganizationForm.jsx';
 import CallerId from './pages/CallerId.jsx';
 import SearchPage from './pages/SearchPage.jsx';
 import Settings from './pages/Settings.jsx';
@@ -53,6 +56,10 @@ export default function App() {
         <Route path="profiles/new" element={<ProfileForm />} />
         <Route path="profiles/:id" element={<ProfileView />} />
         <Route path="profiles/:id/edit" element={<ProfileForm />} />
+        <Route path="organizations" element={<Organizations />} />
+        <Route path="organizations/new" element={<OrganizationForm />} />
+        <Route path="organizations/:id" element={<OrganizationView />} />
+        <Route path="organizations/:id/edit" element={<OrganizationForm />} />
         <Route path="posts" element={<Posts />} />
         <Route path="shekor" element={<Shekor />} />
         <Route path="shekor/:id" element={<Shekor />} />

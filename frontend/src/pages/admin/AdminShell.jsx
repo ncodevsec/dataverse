@@ -5,12 +5,12 @@ import { useFetch, useTitle } from '../../hooks/hooks.js';
 import { api } from '../../lib/api.js';
 import { bytes, fmtDateTime, timeAgo } from '../../lib/format.js';
 import Users from './Users.jsx';
-import { AdminProfiles, AdminContacts } from './AdminData.jsx';
+import { AdminProfiles, AdminContacts, AdminOrganizations } from './AdminData.jsx';
 import Audit from './Audit.jsx';
 import SiteSettings from './SiteSettings.jsx';
 import Backup from './Backup.jsx';
 
-const LINKS = [['/admin', 'Overview', true], ['/admin/users', 'Users'], ['/admin/profiles', 'Profiles'], ['/admin/contacts', 'Caller ID'], ['/admin/audit', 'Audit log'], ['/admin/settings', 'Site settings'], ['/admin/backup', 'Backup']];
+const LINKS = [['/admin', 'Overview', true], ['/admin/users', 'Users'], ['/admin/profiles', 'Profiles'], ['/admin/organizations', 'Organizations'], ['/admin/contacts', 'Caller ID'], ['/admin/audit', 'Audit log'], ['/admin/settings', 'Site settings'], ['/admin/backup', 'Backup']];
 
 function Overview() {
   const stats = useFetch(() => api.get('/admin/stats'), []);
@@ -29,7 +29,7 @@ function Overview() {
       )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Users" value={t.users} hint={`${t.admins} admin${t.admins === 1 ? '' : 's'} · ${t.pendingUsers} pending · ${t.inactiveUsers} inactive`} to="/admin/users" />
-        <Stat label="Profiles" value={t.profiles.toLocaleString()} hint={`${t.profilesWithPhoto} with photo · ${t.married} married`} to="/admin/profiles" />
+        <Stat label="Profiles" value={t.profiles.toLocaleString()} hint={`${t.organizations} organizations · ${t.profilesWithPhoto} with photo`} to="/admin/profiles" />
         <Stat label="Contacts" value={t.contacts.toLocaleString()} hint={`${t.uniqueNumbers.toLocaleString()} unique numbers`} to="/admin/contacts" />
         <Stat label="Audit events" value={t.auditEvents.toLocaleString()} hint={`${t.posts} notes`} to="/admin/audit" />
       </div>
@@ -91,6 +91,7 @@ export default function AdminShell() {
         <Route index element={<Overview />} />
         <Route path="users" element={<Users />} />
         <Route path="profiles" element={<AdminProfiles />} />
+        <Route path="organizations" element={<AdminOrganizations />} />
         <Route path="contacts" element={<AdminContacts />} />
         <Route path="audit" element={<Audit />} />
         <Route path="settings" element={<SiteSettings />} />

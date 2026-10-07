@@ -4,7 +4,7 @@ import { useDebounce } from '../hooks/hooks.js';
 import { Avatar, Field, IconButton, cx } from './ui.jsx';
 
 /** Searchable single-profile picker (father / mother / spouse / saved-by...). value = profile id or null. */
-export default function ProfilePicker({ label, value, onChange, initialLabel, error, hint, placeholder = 'Search by name, nickname or ID', onSelect, resetOnPick = false, exclude = [], entityType }) {
+export default function ProfilePicker({ label, value, onChange, initialLabel, error, hint, placeholder = 'Search by name, nickname or ID', onSelect, resetOnPick = false, exclude = [], kind = 'human' }) {
   const id = useId();
   const [selected, setSelected] = useState(value ? { id: value, name: initialLabel || `Profile #${value}` } : null);
   const [q, setQ] = useState('');
@@ -23,9 +23,9 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
   useEffect(() => {
     if (!open || dq.trim().length < 1) { setItems([]); return undefined; }
     let live = true;
-    api.get('/profiles/options', { q: dq, limit: 8 + exclude.length, entityType }).then((d) => { if (live) { setItems(d.items.filter((x) => !exclude.includes(x.id)).slice(0, 8)); setActive(0); } }).catch(() => {});
+    api.get(kind === 'organization' ? '/organizations/options' : '/profiles/options', { q: dq, limit: 8 + exclude.length }).then((d) => { if (live) { setItems(d.items.filter((x) => !exclude.includes(x.id)).slice(0, 8)); setActive(0); } }).catch(() => {});
     return () => { live = false; };
-  }, [dq, open, entityType]);
+  }, [dq, open, kind]);
 
   useEffect(() => {
     const close = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
@@ -61,8 +61,8 @@ export default function ProfilePicker({ label, value, onChange, initialLabel, er
               <li key={p.id} role="option" aria-selected={i === active}>
                 <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)}
                   className={cx('flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm', i === active ? 'bg-accent-soft' : 'hover:bg-surface-2')}>
-                  <Avatar src={p.photoUrl} name={p.name} size="sm" />
-                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{p.name}</span><span className="block truncate text-xs text-muted">#{p.id}{p.nickname ? ` · ${p.nickname}` : ''}{p.district ? ` · ${p.district}` : ''}</span></span>
+                  <Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} />
+                  <span className="min-w-0 flex-1"><span className="block truncate font-medium">{p.name}</span><span className="block truncate text-xs text-muted">#{p.id}{p.nickname || p.shortName ? ` · ${p.nickname || p.shortName}` : ''}{p.district ? ` · ${p.district}` : ''}</span></span>
                 </button>
               </li>
             ))}
