@@ -161,7 +161,7 @@ export function PhotoImg({ src, alt, gender, blurPx = 10, className }) {
 }
 
 export function Avatar({ src, name, size = 'md', gender, className }) {
-  const dims = { xs: 'h-7 w-7 text-[10px]', sm: 'h-9 w-9 text-xs', md: 'h-12 w-12 text-sm', lg: 'h-20 w-20 text-xl', xl: 'h-32 w-32 text-3xl' }[size];
+  const dims = { xs: 'h-7 w-7 text-[10px]', sm: 'h-9 w-9 text-xs', md: 'h-17 w-17 text-sm', lg: 'h-20 w-20 text-xl', xl: 'h-32 w-32 text-3xl' }[size];
   return src ? (
     <span className={cx('inline-block shrink-0 overflow-hidden rounded-full border border-line', dims, className)}><PhotoImg src={src} alt={name ? `Photo of ${name}` : ''} gender={gender} blurPx={BLUR_PX[size]} /></span>
   ) : (
