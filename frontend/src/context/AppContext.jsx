@@ -33,11 +33,13 @@ export function ToastProvider({ children }) {
 }
 
 // ------------------------------------------------------------------ site settings (public)
-const SiteCtx = createContext({ siteName: 'Dataverse', siteDescription: '', registrationEnabled: true, defaultTheme: 'system' });
+// blurFemalePhotos starts TRUE until the real setting is known, so photos are never shown unblurred by accident.
+const SITE_DEFAULTS = { siteName: 'Dataverse', siteDescription: '', registrationEnabled: true, defaultTheme: 'system', blurFemalePhotos: true };
+const SiteCtx = createContext(SITE_DEFAULTS);
 export const useSite = () => useContext(SiteCtx);
 
 export function SiteProvider({ children }) {
-  const [site, setSite] = useState({ siteName: 'Dataverse', siteDescription: '', registrationEnabled: true, defaultTheme: 'system' });
+  const [site, setSite] = useState(SITE_DEFAULTS);
   const reload = useCallback(() => api.get('/settings/public').then((d) => setSite(d.settings)).catch(() => {}), []);
   useEffect(() => { reload(); }, [reload]);
   return <SiteCtx.Provider value={useMemo(() => ({ ...site, reload }), [site, reload])}>{children}</SiteCtx.Provider>;

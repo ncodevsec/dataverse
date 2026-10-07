@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ContactForm from '../../components/ContactForm.jsx';
+import Icon from '../../components/Icon.jsx';
 import ProfilePicker from '../../components/ProfilePicker.jsx';
-import { Avatar, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, LinkButton, LoadingBlock, Modal, Pagination, SearchInput, SelectField } from '../../components/ui.jsx';
+import { Avatar, Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, IconButton, InfiniteFooter, LinkButton, LoadingBlock, Modal, Pagination, SearchInput, SelectField } from '../../components/ui.jsx';
 import { useToast } from '../../context/AppContext.jsx';
-import { useDebounce, useFetch } from '../../hooks/hooks.js';
+import { useDebounce, useFetch, useInfiniteList } from '../../hooks/hooks.js';
+import { orgTypeLabel } from '../../lib/options.js';
 import { api } from '../../lib/api.js';
 
 export function AdminProfiles() {
@@ -37,7 +39,7 @@ export function AdminProfiles() {
               <tbody className="divide-y divide-line">
                 {data.items.map((p) => (
                   <tr key={p.id}>
-                    <td className="px-4 py-2.5"><Link to={`/profiles/${p.id}`} className="flex items-center gap-3 hover:text-accent"><Avatar src={p.photoUrl} name={p.name} size="sm" /><span className="font-medium">{p.name}</span></Link></td>
+                    <td className="px-4 py-2.5"><Link to={`/profiles/${p.id}`} className="flex items-center gap-3 hover:text-accent"><Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} /><span className="font-medium">{p.name}</span></Link></td>
                     <td className="px-4 py-2.5 text-muted">#{p.id}</td>
                     <td className="px-4 py-2.5 text-muted">{p.phone || '—'}</td>
                     <td className="px-4 py-2.5 text-muted">{p.district || '—'}</td>
@@ -148,5 +150,48 @@ function ContactTools({ open, onClose, relatives, onChanged }) {
       </div>
       <ConfirmDialog open={confirm} danger title="Delete this phonebook?" message="All contacts saved by this person will be permanently removed. This is recorded in the audit log." confirmLabel="Delete all contacts" loading={busy} onConfirm={wipe} onClose={() => setConfirm(false)} />
     </Modal>
+  );
+}
+
+export function AdminOrganizations() {
+  const toast = useToast();
+  const [text, setText] = useState('');
+  const dq = useDebounce(text, 300);
+  const [del, setDel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const list = useInfiniteList((page) => api.get('/organizations', { q: dq, sort: 'newest', page, limit: 30 }), [dq]);
+  async function remove() {
+    setBusy(true);
+    try { await api.del(`/organizations/${del.id}`); toast.success(`Deleted ${del.name}`); setDel(null); list.reload(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchInput className="min-w-[14rem] flex-1" value={text} onChange={setText} placeholder="Search organizations by name or ID…" />
+        <LinkButton to="/organizations/new" variant="primary" icon="plus">Add organization</LinkButton>
+      </div>
+      {list.error && list.items.length === 0 ? <ErrorState error={list.error} onRetry={list.reload} /> : list.initialLoading ? <LoadingBlock /> : list.items.length === 0 ? <EmptyState title="No organizations match" icon="building" /> : (
+        <>
+          <Card className="overflow-x-auto">
+            <table className="w-full min-w-[34rem] text-left text-sm">
+              <thead className="border-b border-line text-xs text-muted"><tr><th className="px-4 py-3 font-medium">Organization</th><th className="px-4 py-3 font-medium">Type</th><th className="px-4 py-3 font-medium">ID</th><th className="px-4 py-3" /></tr></thead>
+              <tbody className="divide-y divide-line">
+                {list.items.map((o) => (
+                  <tr key={o.id}>
+                    <td className="px-4 py-2.5"><Link to={`/organizations/${o.id}`} className="flex items-center gap-3 hover:text-accent"><Avatar src={o.photoUrl} name={o.name} size="sm" /><span className="font-medium">{o.name}</span></Link></td>
+                    <td className="px-4 py-2.5 text-muted">{orgTypeLabel(o.orgType)}</td>
+                    <td className="px-4 py-2.5 text-muted">#{o.id}</td>
+                    <td className="px-4 py-2.5"><div className="flex justify-end"><Link to={`/organizations/${o.id}/edit`} aria-label={`Edit ${o.name}`} title="Edit" className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink"><Icon name="edit" className="h-[18px] w-[18px]" /></Link><IconButton icon="trash" label={`Delete ${o.name}`} onClick={() => setDel(o)} /></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+          <InfiniteFooter list={list} label="organizations" />
+        </>
+      )}
+      <ConfirmDialog open={!!del} danger title={`Delete ${del?.name}?`} confirmLabel="Delete organization" loading={busy} onConfirm={remove} onClose={() => setDel(null)}
+        message="The organization, its logo, posts and connections are permanently removed. People are not deleted. This is recorded in the audit log." />
+    </div>
   );
 }

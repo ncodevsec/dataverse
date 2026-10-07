@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
-import { Avatar, Badge, Card, cx } from './ui.jsx';
+import { Avatar, Badge, Card, PhotoImg, cx } from './ui.jsx';
 import { MARITAL, initials } from '../lib/format.js';
-import { entityLabel } from '../lib/options.js';
 
 export const VIEW_MODES = [
   { id: 'grid-h', label: 'Grid – horizontal cards', icon: 'grid' },
@@ -10,11 +9,10 @@ export const VIEW_MODES = [
   { id: 'row-compact', label: 'Rows – compact list', icon: 'list' },
 ];
 
-const subline = (p) => [p.entityType !== 'HUMAN' && entityLabel(p.entityType), p.occupation, p.district || p.presentCity].filter(Boolean).join(' · ');
+const subline = (p) => [p.occupation, p.district || p.presentCity].filter(Boolean).join(' · ');
 const Badges = ({ p }) => (
   <div className="mt-1 flex flex-wrap gap-1.5">
     <Badge>#{p.id}</Badge>
-    {p.entityType !== 'HUMAN' && <Badge tone="accent">{entityLabel(p.entityType)}</Badge>}
     {p.maritalStatus === 'MARRIED' && <Badge>{MARITAL.MARRIED}</Badge>}
     {p.bloodGroup && <Badge tone="accent">{p.bloodGroup}</Badge>}
     {p.dateOfDeath && <Badge>Deceased</Badge>}
@@ -27,7 +25,7 @@ export default function ProfileCard({ p, variant = 'grid-h' }) {
   if (variant === 'row-compact') {
     return (
       <Link to={`/profiles/${p.id}`} className="group flex items-center gap-2.5 px-3 py-1.5 transition-colors hover:bg-surface-2">
-        <Avatar src={p.photoUrl} name={p.name} size="xs" />
+        <Avatar src={p.photoUrl} name={p.name} size="xs" gender={p.gender} />
         <span className="min-w-0 flex-1 truncate text-sm"><span className="font-medium group-hover:text-accent">{p.name}</span>{p.nickname && <span className="text-muted"> “{p.nickname}”</span>}{sub && <span className="hidden text-muted sm:inline"> · {sub}</span>}</span>
         <span className="shrink-0 text-xs text-muted">#{p.id}</span>
       </Link>
@@ -37,7 +35,7 @@ export default function ProfileCard({ p, variant = 'grid-h' }) {
     return (
       <Link to={`/profiles/${p.id}`} className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-accent/60">
         <div className="aspect-square w-full bg-surface-2">
-          {p.photoUrl ? <img src={p.photoUrl} alt={`Photo of ${p.name}`} loading="lazy" className="h-full w-full object-cover" />
+          {p.photoUrl ? <PhotoImg src={p.photoUrl} alt={`Photo of ${p.name}`} gender={p.gender} blurPx={16} />
             : <span aria-hidden className="flex h-full w-full items-center justify-center text-5xl font-semibold text-muted">{initials(p.name)}</span>}
         </div>
         <div className="min-w-0 p-3">

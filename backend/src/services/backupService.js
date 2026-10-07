@@ -13,11 +13,15 @@ const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 const TABLES = [
   { name: 'users', pk: 'id', deferred: ['profile_id', 'approved_by'], blank: ['reset_token_hash', 'reset_token_expires_at'] },
   { name: 'profiles', pk: 'id', deferred: ['created_by', 'updated_by', 'father_id', 'mother_id', 'spouse_id'], identity: true },
+  { name: 'organizations', pk: 'id', identity: true },
   { name: 'profile_photos', pk: 'profile_id' },
+  { name: 'organization_photos', pk: 'organization_id' },
   { name: 'caller_contacts', pk: 'id', identity: true },
   { name: 'posts', pk: 'id', identity: true },
   { name: 'marriages', pk: 'id', identity: true },
-  { name: 'entity_links', pk: 'id', identity: true },
+  { name: 'memberships', pk: 'id', identity: true },
+  { name: 'organization_links', pk: 'id', identity: true },
+  { name: 'entity_links_unmapped', pk: 'id' },
   { name: 'site_settings', pk: 'key', upsert: true },
   { name: 'audit_logs', pk: 'id', identity: true },
 ];
@@ -123,6 +127,17 @@ export async function writeBackup(out, { now = new Date() } = {}) {
     }
     if (rows.length < 20) break;
   }
+  for (let offset = 0; ; offset += 20) {
+    const { rows } = await query('SELECT organization_id, content_type, data FROM organization_photos ORDER BY organization_id LIMIT 20 OFFSET $1', [offset]);
+    if (!rows.length) break;
+    for (const r of rows) {
+      const name = `img/organization/organization_${r.organization_id}.${EXT[r.content_type] || 'bin'}`;
+      const entry = throttle();
+      archive.append(r.data, { name }); added.add(name); photos++;
+      await entry;
+    }
+    if (rows.length < 20) break;
+  }
   let diskFiles = 0;
   for (const dir of imageDirs()) {
     for (const f of walk(dir)) {
@@ -139,7 +154,7 @@ export async function writeBackup(out, { now = new Date() } = {}) {
   archive.append([
     'Dataverse backup', `Created: ${now.toISOString()}`, '',
     'database.sql  All data (users incl. password hashes, profiles, photos, contacts, posts, links, settings, audit log).',
-    'img/          Profile photos exported as files (the same photos are also inside database.sql).', '',
+    'img/          Profile photos and organization logos exported as files (the same images are also inside database.sql).', '',
     'RESTORE', '1. Create an empty PostgreSQL database and set DATABASE_URL (do NOT set BOOTSTRAP_ADMIN_* for this step).',
     '2. npm run db:migrate', '3. psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database.sql', '',
     'KEEP THIS FILE PRIVATE: it contains personal data and password hashes.', ''].join('\n'), { name: 'README.txt' });

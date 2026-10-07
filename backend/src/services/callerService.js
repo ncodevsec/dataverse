@@ -3,11 +3,12 @@ import { badRequest, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike, formatPhone } from '../utils/phone.js';
 import { parseVcf } from '../utils/vcf.js';
 
-const SELECT = `SELECT c.id, c.name, c.number, c.connection_id, c.profile_id, c.created_by, c.created_at,
-       rel.name AS relative_name, prof.name AS profile_name, prof.photo_updated_at AS profile_photo
+const SELECT = `SELECT c.id, c.name, c.number, c.connection_id, c.profile_id, c.organization_id, c.created_by, c.created_at,
+       rel.name AS relative_name, prof.name AS profile_name, prof.photo_updated_at AS profile_photo, org.name AS organization_name
   FROM caller_contacts c
   LEFT JOIN profiles rel  ON rel.id  = c.connection_id
-  LEFT JOIN profiles prof ON prof.id = c.profile_id`;
+  LEFT JOIN profiles prof ON prof.id = c.profile_id
+  LEFT JOIN organizations org ON org.id = c.organization_id`;
 
 export const toContact = (r, viewer) => ({
   id: r.id,
@@ -17,6 +18,8 @@ export const toContact = (r, viewer) => ({
   relativeName: r.relative_name,
   profileId: r.profile_id,
   profileName: r.profile_name,
+  organizationId: r.organization_id,
+  organizationName: r.organization_name,
   createdAt: r.created_at,
   canEdit: !!viewer && (viewer.role === 'ADMIN' || r.created_by === viewer.id),
 });

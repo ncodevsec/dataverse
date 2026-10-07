@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Markdown from './Markdown.jsx';
 import ProfilePicker from './ProfilePicker.jsx';
-import { Avatar, Badge, Button, Card, ConfirmDialog, IconButton, Modal, SelectField, Tabs, TextArea, TextField, apiErrors, cx } from './ui.jsx';
+import { Avatar, Badge, Button, Card, ConfirmDialog, ErrorState, IconButton, LoadingBlock, Modal, SelectField, Tabs, TextArea, TextField, apiErrors, cx } from './ui.jsx';
 import { useToast } from '../context/AppContext.jsx';
+import { useFetch } from '../hooks/hooks.js';
 import { api } from '../lib/api.js';
 import { fmtDateTime, timeAgo } from '../lib/format.js';
 
@@ -37,7 +38,9 @@ function TagList({ value, onChange }) {
   return <div className="-mt-1 flex flex-wrap gap-1.5">{value.map((t) => <TagChip key={t} tag={t} onRemove={() => onChange(value.filter((x) => x !== t))} />)}</div>;
 }
 
-export function PostCard({ post, showProfile = true, onEdit, onDelete }) {
+const subjectPath = (sub) => (sub.kind === 'organization' ? `/organizations/${sub.id}` : `/profiles/${sub.id}`);
+
+export function PostCard({ post, showSubject = true, onEdit, onDelete }) {
   const [full, setFull] = useState(null);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
@@ -49,11 +52,11 @@ export function PostCard({ post, showProfile = true, onEdit, onDelete }) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-start gap-3">
-        {showProfile && <Link to={`/profiles/${post.profile.id}`} aria-label={`About ${post.profile.name}`}><Avatar src={post.profile.photoUrl} name={post.profile.name} size="sm" /></Link>}
+        {showSubject && <Link to={subjectPath(post.subject)} aria-label={`About ${post.subject.name}`}><Avatar src={post.subject.photoUrl} name={post.subject.name} size="sm" gender={post.subject.gender} /></Link>}
         <div className="min-w-0 flex-1">
           <h3 className="text-base font-semibold leading-snug">{post.title} {post.status !== 'published' && <Badge tone="warn">{post.status}</Badge>}</h3>
           <p className="text-xs text-muted">
-            {showProfile && <>About <Link to={`/profiles/${post.profile.id}`} className="text-ink hover:text-accent">{post.profile.name}</Link> · </>}
+            {showSubject && <>About <Link to={subjectPath(post.subject)} className="text-ink hover:text-accent">{post.subject.name}</Link> · </>}
             {post.author ? `by ${post.author.name}` : 'by a removed account'} · <time dateTime={post.createdAt} title={fmtDateTime(post.createdAt)}>{timeAgo(post.createdAt)}</time>
           </p>
         </div>
@@ -66,28 +69,29 @@ export function PostCard({ post, showProfile = true, onEdit, onDelete }) {
   );
 }
 
-/** Create / edit dialog with a Markdown preview. Pass `profile` to fix the subject, otherwise a picker is shown. */
-export function PostEditor({ open, post, profile, onClose, onSaved }) {
+/** Create / edit dialog with a Markdown preview. Pass `subject` ({ kind, id, name }) to fix who/what it is about, otherwise a picker is shown. */
+export function PostEditor({ open, post, subject: fixed, onClose, onSaved }) {
   const toast = useToast();
   const blank = { title: '', content: '', status: 'published', tags: [] };
   const [form, setForm] = useState(blank);
   const [subject, setSubject] = useState(null);
+  const [kind, setKind] = useState('human');
   const [tab, setTab] = useState('write');
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!open) return;
     setForm(post ? { title: post.title, content: post.content, status: post.status, tags: post.tags } : blank);
-    setSubject(profile?.id ?? post?.profile?.id ?? null); setTab('write'); setErrors({});
+    setSubject(fixed?.id ?? post?.subject?.id ?? null); setKind(fixed?.kind ?? post?.subject?.kind ?? 'human'); setTab('write'); setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, post, profile?.id]);
+  }, [open, post, fixed?.id, fixed?.kind]);
 
   async function save(e) {
     e?.preventDefault();
-    if (!post && !subject) { setErrors({ profileId: 'Choose who this post is about' }); return; }
+    if (!post && !subject) { setErrors({ profileId: 'Choose who or what this post is about' }); return; }
     setBusy(true); setErrors({});
     try {
-      if (post) await api.patch(`/posts/${post.id}`, form); else await api.post('/posts', { ...form, profileId: subject });
+      if (post) await api.patch(`/posts/${post.id}`, form); else await api.post('/posts', { ...form, ...(kind === 'organization' ? { organizationId: subject } : { profileId: subject }) });
       toast.success(post ? 'Post updated' : 'Post published'); onSaved?.(); onClose();
     } catch (err) { setErrors(apiErrors(err)); toast.error(err.message); } finally { setBusy(false); }
   }
@@ -95,7 +99,12 @@ export function PostEditor({ open, post, profile, onClose, onSaved }) {
     <Modal open={open} onClose={onClose} size="lg" title={post ? 'Edit post' : 'New post'}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{post ? 'Save post' : 'Publish'}</Button></>}>
       <form onSubmit={save} className="space-y-4" noValidate>
-        {!post && !profile && <ProfilePicker label="Who is this post about?" value={subject} onChange={setSubject} error={errors.profileId} />}
+        {!post && !fixed && (
+          <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
+            <SelectField label="About a" value={kind} onChange={(e) => { setKind(e.target.value); setSubject(null); }}><option value="human">Person</option><option value="organization">Organization</option></SelectField>
+            <ProfilePicker key={kind} kind={kind} label={kind === 'organization' ? 'Which organization?' : 'Who?'} value={subject} onChange={setSubject} error={errors.profileId || errors.organizationId} />
+          </div>
+        )}
         <TextField label="Title" required value={form.title} error={errors.title} maxLength={200} onChange={(e) => setForm({ ...form, title: e.target.value })} />
         <div>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'write', label: 'Write' }, { id: 'preview', label: 'Preview' }]} className="mb-3" />
@@ -116,7 +125,7 @@ export function PostEditor({ open, post, profile, onClose, onSaved }) {
 }
 
 /** Shared create / edit / delete plumbing for any list of posts. */
-export function usePostDialogs({ reload, profile }) {
+export function usePostDialogs({ reload, subject }) {
   const toast = useToast();
   const [editing, setEditing] = useState(undefined); // undefined closed | null new | post
   const [del, setDel] = useState(null);
@@ -128,9 +137,29 @@ export function usePostDialogs({ reload, profile }) {
   }
   const dialogs = (
     <>
-      <PostEditor open={editing !== undefined} post={editing || undefined} profile={profile} onClose={() => setEditing(undefined)} onSaved={reload} />
+      <PostEditor open={editing !== undefined} post={editing || undefined} subject={subject} onClose={() => setEditing(undefined)} onSaved={reload} />
       <ConfirmDialog open={!!del} danger title="Delete this post?" message={del ? `“${del.title}” will be permanently removed.` : ''} confirmLabel="Delete post" loading={busy} onConfirm={remove} onClose={() => setDel(null)} />
     </>
   );
   return { openNew: () => setEditing(null), openEdit, askDelete: setDel, dialogs };
+}
+
+/** The posts about one person or organization, with add / edit / delete. */
+export function SubjectPosts({ subject }) {
+  const path = subject.kind === 'organization' ? `/organizations/${subject.id}/posts` : `/profiles/${subject.id}/posts`;
+  const { data, error, loading, reload } = useFetch(() => api.get(path), [path]);
+  const { openNew, openEdit, askDelete, dialogs } = usePostDialogs({ reload, subject });
+  const items = data?.items || [];
+  return (
+    <Card className="p-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold">Posts</h2>
+        <div className="flex items-center gap-2"><Link to="/posts" className="text-sm text-accent hover:underline">All posts</Link><Button size="sm" icon="plus" onClick={openNew}>New post</Button></div>
+      </div>
+      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock rows={1} /> : items.length === 0 ? <p className="text-sm text-muted">No posts about {subject.name} yet.</p> : (
+        <div className="space-y-4">{items.map((n) => <PostCard key={n.id} post={n} showSubject={false} onEdit={openEdit} onDelete={askDelete} />)}</div>
+      )}
+      {dialogs}
+    </Card>
+  );
 }

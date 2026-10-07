@@ -301,11 +301,11 @@ test('approval: sign-ups are PENDING, get no session, see nothing, and need an a
 test('privacy: anonymous visitors get nothing but the public site name; API responses are never cacheable', async () => {
   const anon = client();
   const guarded = ['/profiles', '/profiles/1', '/profiles/1/photo', '/profiles/1/family', '/profiles/1/posts', '/profiles/options?q=a', '/profiles/facets',
-    '/tree/1', '/contacts', '/contacts/relatives', '/search?q=a', '/dashboard', '/posts', '/posts/tags', '/posts/1', '/me', '/admin/stats'];
+    '/tree/1', '/organizations', '/organizations/1', '/organizations/1/photo', '/organizations/1/members', '/organizations/1/relations', '/organizations/1/structure', '/profiles/1/memberships', '/contacts', '/contacts/relatives', '/search?q=a', '/dashboard', '/posts', '/posts/tags', '/posts/1', '/me', '/admin/stats'];
   for (const u of guarded) assert.equal((await anon.get(u)).status, 401, u);
   assert.equal((await anon.post('/posts', { profileId: 1, title: 'x' })).status, 401);
   const pub = await anon.get('/settings/public');
-  assert.deepEqual(Object.keys(pub.data.settings).sort(), ['defaultTheme', 'registrationEnabled', 'siteDescription', 'siteName']);
+  assert.deepEqual(Object.keys(pub.data.settings).sort(), ['blurFemalePhotos', 'defaultTheme', 'registrationEnabled', 'siteDescription', 'siteName']);
   const res = await fetch(`${base}/profiles`, { headers: { 'X-Requested-With': 'dataverse' } });
   assert.equal(res.headers.get('cache-control'), 'no-store');
 });
@@ -388,7 +388,7 @@ test('posts: markdown content, lower-case tags, feed, tag search, visibility and
   assert.equal((await alice.patch(`/posts/${post.id}`, { tags: ['updated'] })).data.post.tags[0], 'updated');
   assert.equal((await admin.del(`/posts/${bobPost.id}`)).status, 204);
   const profilePosts = (await alice.get(`/profiles/${person.id}/posts`)).data.items;
-  assert.ok(profilePosts.some((p) => p.id === post.id) && profilePosts.every((p) => p.profile.id === person.id));
+  assert.ok(profilePosts.some((p) => p.id === post.id) && profilePosts.every((p) => p.subject.id === person.id && p.subject.kind === 'human'));
 
   // long content is excerpted in the feed and full on the single-post endpoint
   const long = (await alice.post('/posts', { profileId: person.id, title: 'Long', content: 'x'.repeat(5000) })).data.post;
@@ -438,71 +438,114 @@ test('multiple spouses: each marriage is kept, the current one is tracked, endin
   assert.equal((await alice.get(`/profiles/${w1.id}`)).data.family.spouses.length, 0);
 });
 
-test('entities: types, members, sub-units, any entity as root, loop and permission rules', async () => {
+test('organizations: types, members, sub-units, any organization as root, loop and permission rules', async () => {
   const bob = await freshBob();
-  const party = (await alice.post('/profiles', { name: 'Test Party', entityType: 'POLITICAL_PARTY', about: 'a party' })).data.profile;
-  assert.equal(party.entityType, 'POLITICAL_PARTY');
-  const wing = (await alice.post('/profiles', { name: 'Youth Wing', entityType: 'GROUP' })).data.profile;
-  const branch = (await alice.post('/profiles', { name: 'Dhaka Branch', entityType: 'GROUP' })).data.profile;
-  const person = (await alice.post('/profiles', { name: 'A Member', gender: 'MALE' })).data.profile;
-  assert.equal(person.entityType, 'HUMAN');
-  assert.equal((await alice.post('/profiles', { name: 'X', entityType: 'ALIEN' })).status, 422);
-  assert.equal((await alice.post('/profiles', { name: 'Bad', entityType: 'GROUP', fatherId: person.id })).status, 400, 'groups have no parents');
-  assert.equal((await alice.patch(`/profiles/${person.id}`, { fatherId: party.id })).status, 400, 'a parent must be a person');
-  assert.equal((await alice.patch(`/profiles/${person.id}`, { spouses: [{ personId: party.id }] })).status, 400, 'a spouse must be a person');
-  assert.equal((await alice.patch(`/profiles/${party.id}`, { childIds: [person.id] })).status, 400, 'only people have children');
+  const mk = async (b, who = alice) => (await who.post('/organizations', b)).data.organization;
+  const party = await mk({ name: 'Test Party', orgType: 'POLITICAL_PARTY', about: 'a party', website: 'testparty.org', socialLinks: { facebook: ['fb.com/tp'] } });
+  assert.equal(party.orgType, 'POLITICAL_PARTY');
+  assert.equal(party.website, 'https://testparty.org', 'bare domains get https://');
+  assert.deepEqual(party.socialLinks.facebook, ['fb.com/tp']);
+  const wing = await mk({ name: 'Youth Wing', orgType: 'GROUP' });
+  const branch = await mk({ name: 'Dhaka Branch', orgType: 'GROUP' });
+  const company = await mk({ name: 'Acme Ltd', orgType: 'COMPANY' });
+  assert.equal((await alice.post('/organizations', { name: 'X', orgType: 'FAMILY' })).status, 422, 'Family is not an organization type');
+  assert.equal((await alice.post('/organizations', { name: 'X', nid: '123' })).status, 422, 'organizations have no NID');
+  assert.equal((await alice.post('/organizations', { name: 'X', occupation: 'x', educationLevel: 'y' })).status, 422, 'no work / education');
+  assert.equal((await alice.post('/organizations', { name: 'X', website: 'javascript:alert(1)' })).status, 422, 'only http(s) websites');
+  assert.equal((await alice.post('/organizations', { name: 'D', foundedOn: '2000-01-01', dissolvedOn: '1999-01-01' })).status, 400);
+  const person = (await alice.post('/profiles', { name: 'A Member', gender: 'MALE', website: 'https://example.com/me' })).data.profile;
+  assert.equal(person.website, 'https://example.com/me');
+  assert.equal((await alice.post('/profiles', { name: 'Bad site', website: 'ftp://x.y' })).status, 422);
+  assert.equal((await alice.post('/profiles', { name: 'Y', entityType: 'GROUP' })).status, 422, 'humans have no entity type any more');
+  assert.equal((await alice.get(`/organizations/${party.id}`)).data.organization.name, 'Test Party');
+  assert.equal((await alice.get(`/profiles/${party.id}`)).status === 200 && party.id === person.id, false, 'separate id spaces');
 
-  const link = (b, who = alice) => who.post('/links', b);
-  assert.equal((await link({ fromId: wing.id, toId: party.id, linkType: 'SUB_UNIT_OF' })).status, 201);
-  assert.equal((await link({ fromId: branch.id, toId: wing.id, linkType: 'SUB_UNIT_OF' })).status, 201);
-  assert.equal((await link({ fromId: person.id, toId: branch.id, linkType: 'MEMBER_OF', role: 'Secretary', startedOn: '2015-01-01' })).status, 201);
-  assert.equal((await link({ fromId: person.id, toId: party.id, linkType: 'MEMBER_OF' })).status, 201, 'a person can belong to several entities');
-  assert.equal((await link({ fromId: person.id, toId: branch.id, linkType: 'MEMBER_OF' })).status, 409, 'duplicate');
-  assert.equal((await link({ fromId: party.id, toId: person.id, linkType: 'MEMBER_OF' })).status, 400, 'people cannot have members');
-  assert.equal((await link({ fromId: person.id, toId: party.id, linkType: 'SUB_UNIT_OF' })).status, 400, 'people are not sub-units');
-  assert.equal((await link({ fromId: party.id, toId: branch.id, linkType: 'SUB_UNIT_OF' })).status, 409, 'no loops');
-  assert.equal((await link({ fromId: party.id, toId: party.id, linkType: 'CONNECTED_TO' })).status, 422);
-  assert.equal((await link({ fromId: party.id, toId: wing.id, linkType: 'CONNECTED_TO' })).status, 201);
-  assert.equal((await link({ fromId: wing.id, toId: party.id, linkType: 'CONNECTED_TO' })).status, 409, 'symmetric duplicate');
-  assert.equal((await link({ fromId: party.id, toId: person.id, linkType: 'AFFILIATED_WITH', startedOn: '2020-01-01', endedOn: '2010-01-01' })).status, 422, 'dates validated');
+  const org = (b, who = alice) => who.post('/org-links', b);
+  assert.equal((await org({ fromId: wing.id, toId: party.id, linkType: 'SUB_UNIT_OF' })).status, 201);
+  assert.equal((await org({ fromId: branch.id, toId: wing.id, linkType: 'SUB_UNIT_OF' })).status, 201);
+  assert.equal((await org({ fromId: party.id, toId: branch.id, linkType: 'SUB_UNIT_OF' })).status, 409, 'no loops');
+  assert.equal((await org({ fromId: party.id, toId: party.id, linkType: 'CONNECTED_TO' })).status, 400);
+  assert.equal((await org({ fromId: company.id, toId: party.id, linkType: 'AFFILIATED_WITH' })).status, 201);
+  assert.equal((await org({ fromId: party.id, toId: company.id, linkType: 'AFFILIATED_WITH' })).status, 409, 'symmetric duplicate');
+  assert.equal((await org({ fromId: company.id, toId: wing.id, linkType: 'MEMBER_OF' })).status, 201, 'an organization can be a member of another');
 
-  // links as seen from the person and from the party
-  const mine = (await alice.get(`/profiles/${person.id}/links`)).data;
-  assert.deepEqual(mine.items.map((l) => [l.other.name, l.direction, l.linkType]).sort(), [['Dhaka Branch', 'out', 'MEMBER_OF'], ['Test Party', 'out', 'MEMBER_OF']]);
-  assert.equal(mine.items.find((l) => l.other.name === 'Dhaka Branch').role, 'Secretary');
-  const partyLinks = (await alice.get(`/profiles/${party.id}/links`)).data;
-  assert.equal(partyLinks.memberCount, 1);
-  assert.equal(partyLinks.subUnitCount, 1);
+  const member = (b, who = alice) => who.post('/memberships', b);
+  assert.equal((await member({ humanId: person.id, organizationId: branch.id, role: 'Secretary', startedOn: '2015-01-01' })).status, 201);
+  assert.equal((await member({ humanId: person.id, organizationId: party.id })).status, 201, 'a person can belong to several organizations');
+  assert.equal((await member({ humanId: person.id, organizationId: company.id, relation: 'AFFILIATED', role: 'Consultant' })).status, 201);
+  assert.equal((await member({ humanId: person.id, organizationId: branch.id })).status, 409, 'duplicate');
+  assert.equal((await member({ humanId: 999999, organizationId: branch.id })).status, 404);
+  assert.equal((await member({ humanId: person.id, organizationId: branch.id, relation: 'MEMBER', startedOn: '2020-01-01', endedOn: '2010-01-01' })).status, 422);
+  assert.equal((await member({ humanId: person.id, organizationId: party.id, relation: 'ENEMY' })).status, 422);
 
-  // any entity is a root: the party, and the middle unit too
-  const top = (await alice.get(`/entities/${party.id}/structure?depth=3`)).data.root;
-  assert.equal(top.name, 'Test Party');
+  const mine = (await alice.get(`/profiles/${person.id}/memberships`)).data.items;
+  assert.deepEqual(mine.map((m) => [m.organization.name, m.relation]).sort(), [['Acme Ltd', 'AFFILIATED'], ['Dhaka Branch', 'MEMBER'], ['Test Party', 'MEMBER']]);
+  assert.equal(mine.find((m) => m.organization.name === 'Dhaka Branch').role, 'Secretary');
+  const rel = (await alice.get(`/organizations/${party.id}/relations`)).data;
+  assert.equal(rel.memberCount, 1); assert.equal(rel.subUnitCount, 1);
+  assert.ok(rel.items.some((l) => l.other.name === 'Youth Wing' && l.direction === 'in' && l.linkType === 'SUB_UNIT_OF'));
+  const members = (await alice.get(`/organizations/${branch.id}/members`)).data;
+  assert.equal(members.total, 1); assert.equal(members.items[0].human.name, 'A Member'); assert.equal(members.items[0].role, 'Secretary');
+  assert.equal((await alice.get(`/organizations/${branch.id}/members?q=nobody`)).data.total, 0);
+
+  const top = (await alice.get(`/organizations/${party.id}/structure?depth=3`)).data.root;
   assert.equal(top.children[0].name, 'Youth Wing');
   assert.equal(top.children[0].children[0].name, 'Dhaka Branch');
   assert.equal(top.children[0].children[0].memberCount, 1);
-  const mid = (await alice.get(`/entities/${wing.id}/structure`)).data.root;
-  assert.equal(mid.children[0].name, 'Dhaka Branch');
-  const shallow = (await alice.get(`/entities/${party.id}/structure?depth=1`)).data.root;
+  const mid = (await alice.get(`/organizations/${wing.id}/structure`)).data.root;
+  assert.equal(mid.children[0].name, 'Dhaka Branch', 'any organization can be the root');
+  const shallow = (await alice.get(`/organizations/${party.id}/structure?depth=1`)).data.root;
   assert.equal(shallow.children[0].children.length, 0);
-  assert.equal(shallow.children[0].subUnitCount, 1, 'tells the UI there is more below');
+  assert.equal(shallow.children[0].subUnitCount, 1);
 
-  // permissions: bob can edit neither end -> forbidden; admin can; profile editor can remove
-  assert.equal((await link({ fromId: person.id, toId: wing.id, linkType: 'MEMBER_OF' }, bob)).status, 403);
-  const linkId = mine.items[0].id;
-  assert.equal((await bob.del(`/links/${linkId}`)).status, 403);
-  assert.equal((await bob.patch(`/links/${linkId}`, { role: 'Hacker' })).status, 403);
-  assert.equal((await alice.patch(`/links/${linkId}`, { role: 'Chair', endedOn: '2022-01-01' })).status, 200);
-  assert.equal((await alice.patch(`/links/${linkId}`, { startedOn: '2023-01-01' })).status, 400, 'start after the stored end date');
-  assert.equal((await admin.del(`/links/${linkId}`)).status, 204);
-  assert.equal((await alice.get(`/profiles/${person.id}/links`)).data.items.length, 1);
-  // the family tree is untouched by non-family links
-  assert.equal((await alice.get(`/tree/${person.id}`)).status, 200);
-  // typed picker + list filter
-  assert.ok((await alice.get('/profiles/options?q=Party&entityType=POLITICAL_PARTY')).data.items.every((p) => p.entityType === 'POLITICAL_PARTY'));
-  assert.equal((await alice.get('/profiles?entityType=GROUP')).data.items.every((p) => p.entityType === 'GROUP'), true);
-  // deleting an entity removes its links
-  assert.equal((await alice.del(`/profiles/${branch.id}`)).status, 204);
-  assert.equal((await query('SELECT count(*)::int AS n FROM entity_links WHERE from_id = $1 OR to_id = $1', [branch.id])).rows[0].n, 0);
+  // permissions
+  assert.equal((await member({ humanId: person.id, organizationId: wing.id }, bob)).status, 403, 'bob can edit neither side');
+  const mid1 = mine[0].id;
+  assert.equal((await bob.del(`/memberships/${mid1}`)).status, 403);
+  assert.equal((await bob.patch(`/memberships/${mid1}`, { role: 'Hacker' })).status, 403);
+  assert.equal((await bob.patch(`/organizations/${party.id}`, { name: 'Hijacked' })).status, 403);
+  assert.equal((await bob.del(`/organizations/${party.id}`)).status, 403);
+  assert.equal((await org({ fromId: branch.id, toId: company.id, linkType: 'CONNECTED_TO' }, bob)).status, 403);
+  assert.equal((await alice.patch(`/memberships/${mid1}`, { role: 'Chair', endedOn: '2022-01-01' })).status, 200);
+  assert.equal((await alice.patch(`/memberships/${mid1}`, { startedOn: '2023-01-01' })).status, 400);
+  assert.equal((await admin.patch(`/organizations/${party.id}`, { shortName: 'TP' })).status, 200);
+  assert.equal((await admin.del(`/memberships/${mid1}`)).status, 204);
+
+  // lists, options, filters; organizations are not mixed into people lists
+  assert.ok((await alice.get('/organizations?orgType=GROUP')).data.items.every((o) => o.orgType === 'GROUP'));
+  assert.equal((await alice.get('/organizations?q=Test%20Party')).data.items[0].name, 'Test Party');
+  assert.ok((await alice.get('/organizations/options?q=Acme')).data.items.some((o) => o.name === 'Acme Ltd'));
+  assert.equal((await alice.get('/profiles?q=Test%20Party')).data.total, 0);
+  assert.ok((await alice.get('/search?q=Acme')).data.organizations.some((o) => o.name === 'Acme Ltd'));
+  // posts about an organization
+  const op = (await alice.post('/posts', { organizationId: party.id, title: 'Party news', tags: ['news'] })).data.post;
+  assert.equal(op.subject.kind, 'organization'); assert.equal(op.subject.name, 'Test Party');
+  assert.equal((await alice.post('/posts', { organizationId: party.id, profileId: person.id, title: 'both' })).status, 422, 'exactly one subject');
+  assert.equal((await alice.post('/posts', { title: 'none' })).status, 422);
+  assert.equal((await alice.get(`/organizations/${party.id}/posts`)).data.items.length, 1);
+  assert.ok((await alice.get('/posts?limit=50')).data.items.some((p) => p.id === op.id));
+  // logo
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  assert.equal((await alice.put(`/organizations/${party.id}/photo`, png, { 'Content-Type': 'image/png' })).status, 200);
+  assert.equal((await bob.get(`/organizations/${party.id}/photo`)).type, 'image/png');
+  assert.equal((await bob.put(`/organizations/${party.id}/photo`, png, { 'Content-Type': 'image/png' })).status, 403);
+  // deleting an organization removes its links, memberships, logo and posts; people are untouched
+  assert.equal((await alice.del(`/organizations/${branch.id}`)).status, 204);
+  assert.equal((await query('SELECT count(*)::int AS n FROM memberships WHERE organization_id = $1', [branch.id])).rows[0].n, 0);
+  assert.equal((await alice.get(`/profiles/${person.id}`)).status, 200);
+  assert.equal((await alice.del(`/organizations/${party.id}`)).status, 204);
+  assert.equal((await query('SELECT count(*)::int AS n FROM posts WHERE organization_id = $1', [party.id])).rows[0].n, 0);
+});
+
+test('blur setting: public flag, admin-only toggle, audited', async () => {
+  assert.equal((await client().get('/settings/public')).data.settings.blurFemalePhotos, false, 'off by default');
+  assert.equal((await alice.put('/admin/settings', { blur_female_photos: true })).status, 403);
+  assert.equal((await admin.put('/admin/settings', { blur_female_photos: 'yes' })).status, 422);
+  assert.equal((await admin.put('/admin/settings', { blur_female_photos: true })).status, 200);
+  assert.equal((await client().get('/settings/public')).data.settings.blurFemalePhotos, true);
+  assert.equal((await admin.get('/admin/settings')).data.settings.blur_female_photos, true);
+  await admin.put('/admin/settings', { blur_female_photos: false });
+  assert.equal((await client().get('/settings/public')).data.settings.blurFemalePhotos, false);
 });
 
 test('profile extras: permanent address inherited from the father, caller-id phonebook count, newest-first default', async () => {
@@ -531,24 +574,34 @@ test('backup: admin-only ZIP with database.sql + img, and the SQL really restore
   assert.equal((await client().get('/admin/backup')).status, 401);
   assert.equal((await alice.get('/admin/backup')).status, 403);
 
+  // organization data that must survive the round trip
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const o1 = (await alice.post('/organizations', { name: 'Backup Co', orgType: 'COMPANY', tags: ['x', 'y'], socialLinks: { facebook: ['a'] }, foundedOn: '2001-02-03' })).data.organization;
+  const o2 = (await alice.post('/organizations', { name: 'Backup Branch', orgType: 'GROUP' })).data.organization;
+  const hp = (await alice.post('/profiles', { name: 'Backup Person' })).data.profile;
+  assert.equal((await alice.post('/org-links', { fromId: o2.id, toId: o1.id, linkType: 'SUB_UNIT_OF' })).status, 201);
+  assert.equal((await alice.post('/memberships', { humanId: hp.id, organizationId: o1.id, role: 'CEO' })).status, 201);
+  assert.equal((await alice.put(`/organizations/${o1.id}/photo`, png, { 'Content-Type': 'image/png' })).status, 200);
+  await alice.post('/posts', { organizationId: o1.id, title: 'Org post' });
+
   const zip = await admin.get('/admin/backup');
   assert.equal(zip.status, 200);
   assert.equal(zip.type, 'application/zip');
   assert.equal(zip.data.subarray(0, 2).toString(), 'PK');
   const names = zip.data.toString('latin1');
-  for (const n of ['database.sql', 'manifest.json', 'README.txt', 'img/profile/profile_']) assert.ok(names.includes(n), `zip contains ${n}`);
+  for (const n of ['database.sql', 'manifest.json', 'README.txt', 'img/profile/profile_', 'img/organization/organization_']) assert.ok(names.includes(n), `zip contains ${n}`);
   const res = await fetch(`${base}/admin/backup`, { headers: { 'X-Requested-With': 'dataverse', Cookie: admin.cookie } });
   assert.match(res.headers.get('content-disposition'), /dataverse-backup_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_UTC\.zip/);
   await res.arrayBuffer();
   assert.ok((await admin.get('/admin/audit-logs?action=system.backup')).data.total >= 1);
 
   // restore test
-  const counts = async () => Object.fromEntries(await Promise.all(['users', 'profiles', 'posts', 'caller_contacts', 'marriages', 'entity_links', 'profile_photos', 'audit_logs']
+  const counts = async () => Object.fromEntries(await Promise.all(['users', 'profiles', 'posts', 'caller_contacts', 'marriages', 'organizations', 'memberships', 'organization_links', 'organization_photos', 'profile_photos', 'audit_logs']
     .map(async (t) => [t, (await query(`SELECT count(*)::int AS n FROM ${t}`)).rows[0].n])));
   const before = await counts();
-  const sample = (await query("SELECT id, name, tags, social_links, father_id, spouse_id, created_by, entity_type FROM profiles WHERE name = 'Many Marriages'")).rows[0];
+  const sample = (await query("SELECT id, name, tags, social_links, father_id, spouse_id, created_by, website FROM profiles WHERE name = 'Many Marriages'")).rows[0];
   const photo = (await query('SELECT profile_id, md5(data) AS h FROM profile_photos LIMIT 1')).rows[0];
-  const links = (await query('SELECT * FROM entity_links ORDER BY id')).rows.length;
+  const links = (await query('SELECT * FROM organization_links ORDER BY id')).rows.length;
   const { dumpSql } = await import('../src/services/backupService.js');
   let sql = ''; for await (const chunk of dumpSql()) sql += chunk;
 
@@ -557,10 +610,15 @@ test('backup: admin-only ZIP with database.sql + img, and the SQL really restore
   await getPool().query(sql);
 
   assert.deepEqual(await counts(), before);
-  const again = (await query("SELECT id, name, tags, social_links, father_id, spouse_id, created_by, entity_type FROM profiles WHERE name = 'Many Marriages'")).rows[0];
+  const again = (await query("SELECT id, name, tags, social_links, father_id, spouse_id, created_by, website FROM profiles WHERE name = 'Many Marriages'")).rows[0];
   assert.deepEqual(again, sample, 'a row with arrays, jsonb, relations and creator comes back identical');
   assert.equal((await query('SELECT md5(data) AS h FROM profile_photos WHERE profile_id = $1', [photo.profile_id])).rows[0].h, photo.h, 'photo bytes identical');
-  assert.equal((await query('SELECT count(*)::int AS n FROM entity_links')).rows[0].n, links);
+  assert.equal((await query('SELECT count(*)::int AS n FROM organization_links')).rows[0].n, links);
+  const o = (await query('SELECT name, org_type, tags, social_links, founded_on, phone_digits FROM organizations WHERE name = $1', ['Backup Co'])).rows[0];
+  assert.deepEqual([o.org_type, o.tags, o.social_links.facebook, o.founded_on], ['COMPANY', ['x', 'y'], ['a'], '2001-02-03']);
+  assert.equal((await query("SELECT role FROM memberships m JOIN profiles p ON p.id = m.human_id WHERE p.name = 'Backup Person'")).rows[0].role, 'CEO');
+  assert.equal((await query("SELECT count(*)::int AS n FROM posts WHERE organization_id IS NOT NULL")).rows[0].n, 1);
+  assert.equal((await query('SELECT count(*)::int AS n FROM organization_photos')).rows[0].n, 1);
   assert.equal((await query("SELECT count(*)::int AS n FROM users WHERE reset_token_hash IS NOT NULL")).rows[0].n, 0, 'reset tokens are not exported');
   // identity sequences continue after the restored data
   const next = await query("INSERT INTO profiles (name) VALUES ('after restore') RETURNING id");

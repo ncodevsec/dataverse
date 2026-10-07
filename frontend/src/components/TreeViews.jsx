@@ -12,7 +12,7 @@ export function Person({ p, role, focus, className }) {
   return (
     <div className={cx('flex w-full min-w-0 items-center gap-2.5 rounded-xl border bg-surface p-2', focus ? 'border-accent ring-2 ring-accent/25' : 'border-line', className)}>
       <Link to={`/profiles/${p.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg hover:text-accent" title={`Open ${p.name}'s profile`}>
-        <Avatar src={p.photoUrl} name={p.name} size="sm" />
+        <Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium leading-tight">{p.name}</span>
           <span className="block truncate text-xs text-muted">{[role, life(p)].filter(Boolean).join(' · ') || `#${p.id}`}</span>

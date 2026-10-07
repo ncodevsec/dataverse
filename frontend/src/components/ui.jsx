@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, forwardRef } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './Icon.jsx';
+import { useSite } from '../context/AppContext.jsx';
 import { initials } from '../lib/format.js';
 
 export const cx = (...a) => a.filter(Boolean).join(' ');
@@ -149,10 +150,20 @@ export function PageHeader({ title, subtitle, actions, back }) {
   );
 }
 
+const BLUR_PX = { xs: 3, sm: 4, md: 5, lg: 8, xl: 12 };
+/** True when this photo must be blurred: the site setting is on and the person is female. */
+export function useBlur(gender) { return useSite().blurFemalePhotos && gender === 'FEMALE'; }
+
+/** A photo that is blurred automatically for protected profiles. Fills its parent; the parent decides the shape. */
+export function PhotoImg({ src, alt, gender, blurPx = 10, className }) {
+  const blurred = useBlur(gender);
+  return <img src={src} alt={blurred ? '' : alt} loading="lazy" draggable={!blurred} className={cx('h-full w-full object-cover', blurred && 'scale-125 select-none', className)} style={blurred ? { filter: `blur(${blurPx}px)` } : undefined} />;
+}
+
 export function Avatar({ src, name, size = 'md', gender, className }) {
   const dims = { xs: 'h-7 w-7 text-[10px]', sm: 'h-9 w-9 text-xs', md: 'h-12 w-12 text-sm', lg: 'h-20 w-20 text-xl', xl: 'h-32 w-32 text-3xl' }[size];
   return src ? (
-    <img src={src} alt={name ? `Photo of ${name}` : ''} loading="lazy" className={cx('shrink-0 rounded-full border border-line object-cover', dims, className)} />
+    <span className={cx('inline-block shrink-0 overflow-hidden rounded-full border border-line', dims, className)}><PhotoImg src={src} alt={name ? `Photo of ${name}` : ''} gender={gender} blurPx={BLUR_PX[size]} /></span>
   ) : (
     <span aria-hidden className={cx('inline-flex shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 font-semibold text-muted', dims, className)}
       data-gender={gender}>{initials(name)}</span>

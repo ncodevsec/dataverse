@@ -11,7 +11,7 @@ export const FIELD_COLUMNS = {
   presentStreet: 'present_street', presentCity: 'present_city', street: 'street', unionName: 'union_name',
   subDistrict: 'sub_district', district: 'district', state: 'state', zip: 'zip', country: 'country',
   socialLinks: 'social_links', about: 'about', tags: 'tags', dateOfDeath: 'date_of_death',
-  fatherId: 'father_id', motherId: 'mother_id', entityType: 'entity_type',
+  fatherId: 'father_id', motherId: 'mother_id', website: 'website',
 };
 
 const photoUrl = (r) => (r.photo_updated_at ? `/api/profiles/${r.id}/photo?v=${new Date(r.photo_updated_at).getTime()}` : null);
@@ -19,7 +19,6 @@ const photoUrl = (r) => (r.photo_updated_at ? `/api/profiles/${r.id}/photo?v=${n
 /** Small card-sized representation used in lists, pickers and trees. */
 export const toSummary = (r) => ({
   id: r.id,
-  entityType: r.entity_type,
   name: r.name,
   nickname: r.nickname,
   gender: r.gender,
@@ -39,7 +38,7 @@ export const toSummary = (r) => ({
   photoUrl: photoUrl(r),
 });
 
-export const SUMMARY_COLUMNS = `p.id, p.entity_type, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
+export const SUMMARY_COLUMNS = `p.id, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
   p.district, p.present_city, p.phone, p.lineage, p.tags, p.father_id, p.mother_id, p.spouse_id, p.photo_updated_at`;
 
 // ---------------------------------------------------------------- permissions
@@ -69,6 +68,7 @@ export function toFull(r, viewer) {
     state: r.state,
     zip: r.zip,
     country: r.country,
+    website: r.website,
     socialLinks: normalizeSocial(r.social_links),
     about: r.about,
     createdAt: r.created_at,
@@ -96,7 +96,6 @@ export async function searchProfiles(f) {
     }
     rank = `(lower(p.name) = lower(${p(f.q)})) DESC, (p.name ILIKE ${p(`${escapeLike(f.q)}%`)}) DESC, `;
   }
-  if (f.entityType) where.push(`p.entity_type = ${p(f.entityType)}`);
   if (f.gender) where.push(`p.gender = ${p(f.gender)}`);
   if (f.maritalStatus) where.push(`p.marital_status = ${p(f.maritalStatus)}`);
   if (f.bloodGroup) where.push(`p.blood_group = ${p(f.bloodGroup)}`);
@@ -120,8 +119,8 @@ export async function searchProfiles(f) {
 }
 
 /** Lightweight lookup used by relationship pickers and global search. */
-export async function lookupProfiles(q, limit = 8, entityType) {
-  const { items } = await searchProfiles({ q, page: 1, limit, sort: 'name', entityType });
+export async function lookupProfiles(q, limit = 8) {
+  const { items } = await searchProfiles({ q, page: 1, limit, sort: 'name' });
   return items;
 }
 
@@ -192,19 +191,16 @@ export async function getProfile(id, viewer) {
 
 // ---------------------------------------------------------------- relationship rules
 async function validateRelations(client, id, current, data) {
-  const type = data.entityType ?? current?.entity_type ?? 'HUMAN';
-  if (type !== 'HUMAN' && (data.fatherId != null || data.motherId != null)) throw badRequest('Only people can have a father or mother', { fatherId: 'Not available for this type' });
   const ids = ['fatherId', 'motherId'].map((k) => data[k]).filter((v) => v != null);
   if (id != null && ids.includes(id)) throw badRequest('A person cannot be their own parent');
   if (data.fatherId != null && data.fatherId === data.motherId) throw badRequest('Father and mother must be different people');
   if (!ids.length) return;
 
-  const { rows } = await client.query('SELECT id, gender, entity_type FROM profiles WHERE id = ANY($1::int[])', [ids]);
+  const { rows } = await client.query('SELECT id, gender FROM profiles WHERE id = ANY($1::int[])', [ids]);
   const byId = new Map(rows.map((r) => [r.id, r]));
   for (const [key, label] of [['fatherId', 'Father'], ['motherId', 'Mother']]) {
     if (data[key] == null) continue;
     if (!byId.has(data[key])) throw badRequest(`${label} (ID ${data[key]}) does not exist`, { [key]: 'No profile with this ID' });
-    if (byId.get(data[key]).entity_type !== 'HUMAN') throw badRequest(`${label} must be a person`, { [key]: 'Pick a person, not a group or organization' });
   }
   // Only enforce gender when the value is being changed, so legacy data never blocks unrelated edits.
   if (data.fatherId != null && data.fatherId !== current?.father_id && byId.get(data.fatherId).gender === 'FEMALE')
@@ -249,14 +245,12 @@ async function refreshCurrentSpouse(client, ids) {
 /** Makes this person's marriages match the given list (add / update / remove), one record per spouse. */
 async function syncSpouses(client, id, spouses) {
   const self = await getProfileRow(id, client);
-  if (spouses.length && self.entity_type !== 'HUMAN') throw badRequest('Only people can have spouses', { spouses: 'Not available for this type' });
   const ids = spouses.map((x) => x.personId);
   if (ids.includes(id)) throw badRequest('A person cannot be their own spouse', { spouses: 'Invalid selection' });
-  const found = (await client.query('SELECT id, entity_type FROM profiles WHERE id = ANY($1::int[])', [ids])).rows;
+  const found = (await client.query('SELECT id FROM profiles WHERE id = ANY($1::int[])', [ids])).rows;
   for (const sp of spouses) {
     const row = found.find((r) => r.id === sp.personId);
     if (!row) throw badRequest(`Spouse (ID ${sp.personId}) does not exist`, { spouses: `No profile with ID ${sp.personId}` });
-    if (row.entity_type !== 'HUMAN') throw badRequest('A spouse must be a person', { spouses: 'Pick a person' });
     if (sp.marriedOn && sp.endedOn && sp.endedOn < sp.marriedOn) throw badRequest('A marriage cannot end before it began', { spouses: 'End date is before the marriage date' });
   }
   const existing = (await client.query('SELECT * FROM marriages WHERE person_a = $1 OR person_b = $1 FOR UPDATE', [id])).rows;
@@ -311,7 +305,6 @@ async function syncRelatives(client, id, data, viewer) {
   const wantsSibs = Array.isArray(data.siblingIds);
   if (!wantsKids && !wantsSibs) return [];
   const self = await getProfileRow(id, client);
-  if (self.entity_type !== 'HUMAN') throw badRequest('Only people can have children or siblings', { childIds: 'Not available for this type' });
   const changed = [];
   const loadMany = async (ids) => new Map((await client.query('SELECT * FROM profiles WHERE id = ANY($1::int[]) FOR UPDATE', [ids])).rows.map((r) => [r.id, r]));
   const mayEdit = (row) => canEditProfile(viewer, row);
@@ -328,7 +321,6 @@ async function syncRelatives(client, id, data, viewer) {
       const rows = await loadMany([...added, ...removed]);
       for (const cid of added) {
         if (!rows.has(cid)) throw badRequest(`Child (ID ${cid}) does not exist`, { childIds: `No profile with ID ${cid}` });
-        if (rows.get(cid).entity_type !== 'HUMAN') throw badRequest('A child must be a person', { childIds: 'Pick a person' });
       }
       if (added.length) {
         const bad = new Set(await ancestorsOf(client, id));
@@ -363,7 +355,6 @@ async function syncRelatives(client, id, data, viewer) {
       const rows = await loadMany([...added, ...removed]);
       for (const sid of added) {
         if (!rows.has(sid)) throw badRequest(`Sibling (ID ${sid}) does not exist`, { siblingIds: `No profile with ID ${sid}` });
-        if (rows.get(sid).entity_type !== 'HUMAN') throw badRequest('A sibling must be a person', { siblingIds: 'Pick a person' });
       }
       if (added.length) {
         const bad = new Set([...(await ancestorsOf(client, id)), ...(await descendantsOf(client, id))]);

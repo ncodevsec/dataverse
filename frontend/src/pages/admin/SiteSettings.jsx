@@ -36,6 +36,10 @@ export default function SiteSettings() {
         <Checkbox label="Let members add profiles and contacts" hint="Members can always edit what they created. Turn off to make the directory admin-managed." checked={form.allow_user_contributions} onChange={(e) => set('allow_user_contributions', e.target.checked)} />
       </Card>
       <Card className="space-y-4 p-5">
+        <h2 className="text-base font-semibold">Privacy</h2>
+        <Checkbox label="Blur female profile photos" hint="When on, every female profile photo on the site is blurred. A member can view the original only by opening that person's profile, clicking the photo and confirming. This hides photos in the interface; it is not a substitute for access control." checked={!!form.blur_female_photos} onChange={(e) => set('blur_female_photos', e.target.checked)} />
+      </Card>
+      <Card className="space-y-4 p-5">
         <h2 className="text-base font-semibold">Defaults</h2>
         <SelectField label="Default theme for new accounts" value={form.default_theme} onChange={(e) => set('default_theme', e.target.value)}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></SelectField>
       </Card>

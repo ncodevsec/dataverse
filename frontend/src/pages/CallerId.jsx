@@ -20,6 +20,7 @@ export function ContactRow({ c, onEdit, onDelete }) {
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
           {c.relativeName && <span>Saved by <Link to={`/profiles/${c.connectionId}`} className="text-ink hover:text-accent">{c.relativeName}</Link></span>}
           {c.profileId && <Link to={`/profiles/${c.profileId}`}><Badge tone="accent">Profile: {c.profileName}</Badge></Link>}
+          {c.organizationId && <Link to={`/organizations/${c.organizationId}`}><Badge tone="accent">Organization: {c.organizationName}</Badge></Link>}
         </div>
       </div>
       <div className="flex shrink-0">
