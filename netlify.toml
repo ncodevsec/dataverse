@@ -6,6 +6,10 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # Non-secret config values (numbers, booleans, URLs, display names) that naturally
+  # appear in source/build output. Real secrets (JWT_SECRET, passwords, API keys,
+  # DATABASE_URL) are still scanned.
+  SECRETS_SCAN_OMIT_KEYS = "BCRYPT_ROUNDS,BOOTSTRAP_ADMIN_NAME,BOOTSTRAP_ADMIN_USERNAME,CORS_ORIGINS,DATABASE_SSL,DATABASE_SSL_REJECT_UNAUTHORIZED,JWT_EXPIRES_DAYS,NODE_ENV,PORT,SERVE_FRONTEND,SITE_URL,TRUST_PROXY"
 
 [functions]
   node_bundler = "esbuild"
