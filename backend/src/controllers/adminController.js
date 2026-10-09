@@ -244,7 +244,10 @@ export const system = asyncHandler(async (_req, res) => {
 export const downloadBackup = asyncHandler(async (req, res) => {
   if (config.isServerless) {
     // Serverless hosts cap duration and response size (Netlify: 10 s / 6 MB), so a big export cannot complete there.
-    const { rows } = await query('SELECT pg_database_size(current_database())::bigint AS bytes');
+    // Measure the app's own table data (not pg_database_size, which includes system catalogs and is several MB even when empty).
+    const { rows } = await query(
+      `SELECT COALESCE(sum(pg_table_size(c.oid)), 0)::bigint AS bytes FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public' AND c.relkind = 'r'`);
     if (rows[0].bytes > 4 * 1024 * 1024) throw new HttpError(413, 'This database is too large to download through the serverless host. Run "npm run backup" on your computer instead.', { code: 'BACKUP_TOO_LARGE' });
   }
   const name = backupFileName();

@@ -9,8 +9,8 @@ export const handler = async (event, context) => {
   // Return as soon as the response is ready; don't wait for idle pg sockets to close.
   context.callbackWaitsForEmptyEventLoop = false;
   try {
-    // binary: image responses (profile photos) must be base64-encoded for API Gateway / Lambda.
-    serverlessHandler ??= serverless(createApp(), { binary: ['image/*'] });
+    // binary: image responses (profile photos) and the backup ZIP must be base64-encoded for API Gateway / Lambda.
+    serverlessHandler ??= serverless(createApp(), { binary: ['image/*', 'application/zip'] });
   } catch (err) {
     console.error('[api] startup failed:', err.message); // e.g. missing DATABASE_URL / JWT_SECRET
     return {
