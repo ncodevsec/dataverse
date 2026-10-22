@@ -21,7 +21,7 @@ export default function Backup() {
     <div className="max-w-2xl space-y-5">
       <Card className="space-y-3 p-5">
         <h2 className="text-base font-semibold">Full backup</h2>
-        <p className="text-sm text-muted">Downloads one date/time-stamped ZIP containing the whole database (<code>database.sql</code>: profiles, contacts, posts, links, users, settings, audit log) and every profile photo as image files in <code>img/</code>. A README with restore steps is included.</p>
+        <p className="text-sm text-muted">Downloads one date/time-stamped ZIP containing the whole database (<code>database.sql</code>: peoples, contacts, posts, links, users, settings, audit log) and every people photo as image files in <code>img/</code>. A README with restore steps is included.</p>
         <p className="rounded-xl border border-line bg-warn-soft p-3 text-sm">The file contains personal data (NID numbers, phone numbers) and password hashes. Store it somewhere private and never commit it to Git. Each export is recorded in the audit log.</p>
         <Button variant="primary" icon="download" loading={busy} onClick={download}>Download backup (.zip)</Button>
       </Card>

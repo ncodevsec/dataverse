@@ -19,12 +19,12 @@ const Badges = ({ p }) => (
   </div>
 );
 
-/** One profile in one of four layouts. `compact` rows are meant to live inside a <ProfileList> wrapper. */
-export default function ProfileCard({ p, variant = 'grid-h' }) {
+/** One people in one of four layouts. `compact` rows are meant to live inside a <PeopleList> wrapper. */
+export default function PeopleCard({ p, variant = 'grid-h' }) {
   const sub = subline(p);
   if (variant === 'row-compact') {
     return (
-      <Link to={`/profiles/${p.id}`} className="group flex items-center gap-2.5 px-3 py-1.5 transition-colors hover:bg-surface-2">
+      <Link to={`/peoples/${p.id}`} className="group flex items-center gap-2.5 px-3 py-1.5 transition-colors hover:bg-surface-2">
         <Avatar src={p.photoUrl} name={p.name} size="xs" gender={p.gender} />
         <span className="min-w-0 flex-1 truncate text-sm"><span className="font-medium group-hover:text-accent">{p.name}</span>{p.nickname && <span className="text-muted"> “{p.nickname}”</span>}{sub && <span className="hidden text-muted sm:inline"> · {sub}</span>}</span>
         <span className="shrink-0 text-xs text-muted">#{p.id}</span>
@@ -33,7 +33,7 @@ export default function ProfileCard({ p, variant = 'grid-h' }) {
   }
   if (variant === 'grid-v') {
     return (
-      <Link to={`/profiles/${p.id}`} className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-accent/60">
+      <Link to={`/peoples/${p.id}`} className="group flex flex-col overflow-hidden rounded-2xl border border-line bg-surface transition-colors hover:border-accent/60">
         <div className="aspect-square w-full bg-surface-2">
           {p.photoUrl ? <PhotoImg src={p.photoUrl} alt={`Photo of ${p.name}`} gender={p.gender} blurPx={16} />
             : <span aria-hidden className="flex h-full w-full items-center justify-center text-5xl font-semibold text-muted">{initials(p.name)}</span>}
@@ -48,7 +48,7 @@ export default function ProfileCard({ p, variant = 'grid-h' }) {
   }
   if (variant === 'row-card') {
     return (
-      <Link to={`/profiles/${p.id}`} className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-accent/60">
+      <Link to={`/peoples/${p.id}`} className="group flex items-center gap-4 rounded-2xl border border-line bg-surface p-4 transition-colors hover:border-accent/60">
         <Avatar src={p.photoUrl} name={p.name} size="lg" gender={p.gender} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-lg font-semibold group-hover:text-accent">{p.name}{p.nickname && <span className="font-normal text-muted"> “{p.nickname}”</span>}</p>
@@ -60,7 +60,7 @@ export default function ProfileCard({ p, variant = 'grid-h' }) {
     );
   }
   return (
-    <Link to={`/profiles/${p.id}`} className="group flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 transition-colors hover:border-accent/60">
+    <Link to={`/peoples/${p.id}`} className="group flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 transition-colors hover:border-accent/60">
       <Avatar src={p.photoUrl} name={p.name} gender={p.gender} />
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold group-hover:text-accent">{p.name}</p>
@@ -71,11 +71,11 @@ export default function ProfileCard({ p, variant = 'grid-h' }) {
   );
 }
 
-/** Lays profiles out for the chosen view mode. */
-export function ProfileList({ items, variant }) {
-  if (variant === 'row-compact') return <Card className="divide-y divide-line overflow-hidden">{items.map((p) => <ProfileCard key={p.id} p={p} variant={variant} />)}</Card>;
+/** Lays peoples out for the chosen view mode. */
+export function PeopleList({ items, variant }) {
+  if (variant === 'row-compact') return <Card className="divide-y divide-line overflow-hidden">{items.map((p) => <PeopleCard key={p.id} p={p} variant={variant} />)}</Card>;
   const cols = { 'grid-h': 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3', 'grid-v': 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4', 'row-card': 'grid gap-3' }[variant] || 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3';
-  return <div className={cols}>{items.map((p) => <ProfileCard key={p.id} p={p} variant={variant} />)}</div>;
+  return <div className={cols}>{items.map((p) => <PeopleCard key={p.id} p={p} variant={variant} />)}</div>;
 }
 
 export function ViewSwitcher({ value, onChange }) {

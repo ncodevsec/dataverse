@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { closePool, withTransaction } from '../src/db/pool.js';
 import { parseDump } from './lib/mysqlDump.js';
 import { formatPhone } from '../src/utils/phone.js';
-import { sniffImageType } from '../src/services/profileService.js';
+import { sniffImageType } from '../src/services/peopleService.js';
 import { BLOOD_GROUPS } from '../src/utils/schemas.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -86,6 +86,13 @@ async function bulkInsert(client, table, columns, rows, { overriding = false, co
   return inserted;
 }
 
+/** Legacy fb / insta / tiktok columns -> one list of URLs (handles become profile links). */
+function socialUrls(r) {
+  const base = { facebook: 'https://facebook.com/', instagram: 'https://instagram.com/', tiktok: 'https://tiktok.com/@' };
+  return [['facebook', r.fb], ['instagram', r.insta], ['tiktok', r.tiktok]].map(([k, v]) => [k, text(v)]).filter(([, v]) => v)
+    .map(([k, v]) => (/^https?:\/\//i.test(v) ? v : base[k] + v.replace(/^@/, '').replace(/[^\w.\-/?=&]/g, ''))).filter((u) => u.length <= 255);
+}
+
 // ------------------------------------------------------------------ main
 const report = {};
 const dry = flag('dry-run');
@@ -102,10 +109,10 @@ const ids = new Set(legacyProfiles.map((r) => Number(r.id)));
 
 try {
   await withTransaction(async (client) => {
-    const existing = (await client.query('SELECT count(*)::int AS n FROM profiles')).rows[0].n;
+    const existing = (await client.query('SELECT count(*)::int AS n FROM peoples')).rows[0].n;
     if (existing && !flag('truncate')) throw new Error(`profiles already contains ${existing} rows. Re-run with --truncate to replace the data (user accounts are kept).`);
     if (flag('truncate')) {
-      await client.query('TRUNCATE profile_photos, posts, caller_contacts, marriages, memberships, profiles RESTART IDENTITY CASCADE');
+      await client.query('TRUNCATE people_photos, posts, caller_contacts, marriages, memberships, peoples RESTART IDENTITY CASCADE');
       console.log('Existing profile/contact/post data truncated.');
     }
 
@@ -128,11 +135,11 @@ try {
         text(r.religion), text(r.politicalView), text(r.nid), text(r.occupation), text(r.eduLevel), text(r.eduGroup),
         lineageFrom(r.lineage), text(r.presentStreet), text(r.presentCity), text(r.street), text(r._union), text(r.subDistrict),
         text(r.district), text(r.state), r.zip && r.zip !== '0' ? String(r.zip) : null, text(r.country),
-        JSON.stringify(Object.fromEntries([['facebook', text(r.fb)], ['instagram', text(r.insta)], ['tiktok', text(r.tiktok)]].filter(([, v]) => v).map(([k, v]) => [k, [v]]))),
+        JSON.stringify(socialUrls(r)),
         text(r.about), listFrom(r.tags),
       ];
     });
-    report.profiles = await bulkInsert(client, 'profiles', cols, rows, { overriding: true });
+    report.profiles = await bulkInsert(client, 'peoples', cols, rows, { overriding: true });
 
     // ---------- relationships (0 / dangling => NULL, spouse links made symmetric)
     const byId = new Map(legacyProfiles.map((r) => [Number(r.id), r]));
@@ -158,13 +165,13 @@ try {
       relIds.push(id); fathers.push(valid(r.fathersID, id)); mothers.push(valid(r.mothersID, id)); spouses.push(spouse.get(id) ?? null);
     }
     await client.query(
-      `UPDATE profiles p SET father_id = v.f, mother_id = v.m, spouse_id = v.s,
+      `UPDATE peoples p SET father_id = v.f, mother_id = v.m, spouse_id = v.s,
               marital_status = CASE WHEN v.s IS NOT NULL AND p.marital_status = 'SINGLE' THEN 'MARRIED' ELSE p.marital_status END
          FROM unnest($1::int[], $2::int[], $3::int[], $4::int[]) AS v(id, f, m, s) WHERE p.id = v.id`,
       [relIds, fathers, mothers, spouses]);
     // every legacy spouse link becomes a marriage record (profiles.spouse_id stays as the current spouse)
-    await client.query(`INSERT INTO marriages (person_a, person_b) SELECT DISTINCT LEAST(id, spouse_id), GREATEST(id, spouse_id) FROM profiles WHERE spouse_id IS NOT NULL ON CONFLICT DO NOTHING`);
-    await client.query(`SELECT setval(pg_get_serial_sequence('profiles', 'id'), (SELECT max(id) FROM profiles))`);
+    await client.query(`INSERT INTO marriages (person_a, person_b) SELECT DISTINCT LEAST(id, spouse_id), GREATEST(id, spouse_id) FROM peoples WHERE spouse_id IS NOT NULL ON CONFLICT DO NOTHING`);
+    await client.query(`SELECT setval(pg_get_serial_sequence('peoples', 'id'), (SELECT max(id) FROM peoples))`);
 
     // ---------- caller contacts
     const contactRows = [];
@@ -177,7 +184,7 @@ try {
       const prof = int(r.profileID);
       contactRows.push([Number(r.id), name, number, conn && ids.has(conn) ? conn : null, prof && ids.has(prof) ? prof : null]);
     }
-    report.contactsInserted = await bulkInsert(client, 'caller_contacts', ['id', 'name', 'number', 'connection_id', 'profile_id'], contactRows,
+    report.contactsInserted = await bulkInsert(client, 'caller_contacts', ['id', 'name', 'number', 'connection_id', 'people_id'], contactRows,
       { overriding: true, conflict: 'ON CONFLICT DO NOTHING', batch: 1000 });
     report.contactsDuplicatesDropped = contactRows.length - report.contactsInserted;
     report.contactsSkippedEmpty = skippedEmpty;
@@ -190,7 +197,7 @@ try {
       r.created_at ? new Date(`${r.created_at.replace(' ', 'T')}Z`) : new Date(), r.updated_at ? new Date(`${r.updated_at.replace(' ', 'T')}Z`) : new Date(),
     ]);
     report.posts = postRows.length
-      ? await bulkInsert(client, 'posts', ['id', 'profile_id', 'title', 'content', 'status', 'tags', 'created_at', 'updated_at'], postRows, { overriding: true }) : 0;
+      ? await bulkInsert(client, 'posts', ['id', 'people_id', 'title', 'content', 'status', 'tags', 'created_at', 'updated_at'], postRows, { overriding: true }) : 0;
     report.postsSkippedNoProfile = legacyPosts.length - postRows.length;
     await client.query(`SELECT setval(pg_get_serial_sequence('posts', 'id'), GREATEST((SELECT max(id) FROM posts), 1))`);
 
@@ -204,8 +211,8 @@ try {
         const type = sniffImageType(buf);
         if (!type || buf.length > 1_000_000) { warn(`photo ${f}: ${type ? 'larger than 1 MB' : 'not a valid image'}, skipped`); continue; }
         await client.query(
-          `INSERT INTO profile_photos (profile_id, content_type, data, size_bytes) VALUES ($1,$2,$3,$4)`, [Number(m[1]), type, buf, buf.length]);
-        await client.query('UPDATE profiles SET photo_updated_at = now() WHERE id = $1', [Number(m[1])]);
+          `INSERT INTO people_photos (people_id, content_type, data, size_bytes) VALUES ($1,$2,$3,$4)`, [Number(m[1]), type, buf, buf.length]);
+        await client.query('UPDATE peoples SET photo_updated_at = now() WHERE id = $1', [Number(m[1])]);
         report.photos++;
       }
     } else {
@@ -214,9 +221,9 @@ try {
 
     // auto-link contacts to profiles by phone where the legacy data had no link
     const linked = await client.query(
-      `UPDATE caller_contacts c SET profile_id = m.id
-         FROM (SELECT right(phone_digits, 10) AS k, min(id) AS id, count(*) AS n FROM profiles WHERE length(phone_digits) >= 10 GROUP BY 1) m
-        WHERE c.profile_id IS NULL AND length(c.number_digits) >= 10 AND right(c.number_digits, 10) = m.k AND m.n = 1`);
+      `UPDATE caller_contacts c SET people_id = m.id
+         FROM (SELECT right(phone_digits, 10) AS k, min(id) AS id, count(*) AS n FROM peoples WHERE length(phone_digits) >= 10 GROUP BY 1) m
+        WHERE c.people_id IS NULL AND length(c.number_digits) >= 10 AND right(c.number_digits, 10) = m.k AND m.n = 1`);
     report.contactsAutoLinkedByPhone = linked.rowCount;
 
     if (dry) throw Object.assign(new Error('dry-run'), { dry: true });

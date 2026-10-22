@@ -7,9 +7,9 @@ import { Spinner } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
 import { Register, Forgot, Reset } from './pages/AuthPages.jsx';
 import Dashboard from './pages/Dashboard.jsx';
-import Profiles from './pages/Profiles.jsx';
-import ProfileView from './pages/ProfileView.jsx';
-import ProfileForm from './pages/ProfileForm.jsx';
+import Peoples from './pages/Peoples.jsx';
+import PeopleView from './pages/PeopleView.jsx';
+import PeopleForm from './pages/PeopleForm.jsx';
 import Shekor from './pages/Shekor.jsx';
 import Posts from './pages/Posts.jsx';
 import Organizations from './pages/Organizations.jsx';
@@ -52,10 +52,10 @@ export default function App() {
 
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route index element={<Dashboard />} />
-        <Route path="profiles" element={<Profiles />} />
-        <Route path="profiles/new" element={<ProfileForm />} />
-        <Route path="profiles/:id" element={<ProfileView />} />
-        <Route path="profiles/:id/edit" element={<ProfileForm />} />
+        <Route path="peoples" element={<Peoples />} />
+        <Route path="peoples/new" element={<PeopleForm />} />
+        <Route path="peoples/:id" element={<PeopleView />} />
+        <Route path="peoples/:id/edit" element={<PeopleForm />} />
         <Route path="organizations" element={<Organizations />} />
         <Route path="organizations/new" element={<OrganizationForm />} />
         <Route path="organizations/:id" element={<OrganizationView />} />

@@ -10,8 +10,8 @@ import { api } from '../lib/api.js';
 function Start() {
   const [q, setQ] = useState('');
   const dq = useDebounce(q, 250);
-  const results = useFetch(() => (dq.trim() ? api.get('/profiles/options', { q: dq, limit: 10 }) : Promise.resolve(null)), [dq]);
-  const recent = useFetch(() => api.get('/profiles', { sort: 'newest', limit: 6 }), []);
+  const results = useFetch(() => (dq.trim() ? api.get('/peoples/options', { q: dq, limit: 10 }) : Promise.resolve(null)), [dq]);
+  const recent = useFetch(() => api.get('/peoples', { sort: 'newest', limit: 6 }), []);
   const list = results.data?.items ?? (dq.trim() ? [] : null);
   return (
     <div>
@@ -57,7 +57,7 @@ export default function Shekor() {
   return (
     <div className={loading ? 'opacity-70 transition-opacity' : ''}>
       <PageHeader title={focus.name} subtitle="Family tree"
-        actions={<><LinkButton to={`/profiles/${focus.id}`} icon="user">Profile</LinkButton><Button variant="ghost" icon="search" onClick={() => navigate('/shekor')}>Another person</Button></>} />
+        actions={<><LinkButton to={`/peoples/${focus.id}`} icon="user">People</LinkButton><Button variant="ghost" icon="search" onClick={() => navigate('/shekor')}>Another person</Button></>} />
 
       {/* generation chain (legacy: বংশানুক্রম) */}
       <nav aria-label="Generation chain" className="mb-5 overflow-x-auto rounded-2xl border border-line bg-surface px-4 py-3">
@@ -96,7 +96,7 @@ export default function Shekor() {
             <Group title="Children" count={f.children.length}
               empty={f.children.length === 0 && <p className="text-sm text-muted">No children linked yet.</p>}>
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{f.children.map((c) => <Person key={c.id} p={c} />)}</div>
-              <LinkButton size="sm" className="mt-3" icon="plus" to={`/profiles/new?${childParams}`}>Add a child</LinkButton>
+              <LinkButton size="sm" className="mt-3" icon="plus" to={`/peoples/new?${childParams}`}>Add a child</LinkButton>
             </Group>
             {f.siblings.length > 0 && <Group title="Siblings" count={f.siblings.length}><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{f.siblings.map((c) => <Person key={c.id} p={c} />)}</div></Group>}
           </div>
@@ -108,7 +108,7 @@ export default function Shekor() {
               <p className="text-sm text-muted">Use the arrows to expand or collapse a branch. The tree icon re-centres Shekor on that person.</p>
               <SelectField aria-label="Generations to show" className="w-40 shrink-0" value={down} onChange={(e) => setDown(Number(e.target.value))}>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} {n === 1 ? 'generation' : 'generations'}</option>)}</SelectField>
             </div>
-            {data.descendants.children.length === 0 ? <EmptyState title="No descendants yet" icon="tree">Children added to this profile will appear here.</EmptyState> : <ul className="overflow-x-auto pb-2"><DescendantNode n={data.descendants} focusId={focus.id} /></ul>}
+            {data.descendants.children.length === 0 ? <EmptyState title="No descendants yet" icon="tree">Children added to this people will appear here.</EmptyState> : <ul className="overflow-x-auto pb-2"><DescendantNode n={data.descendants} focusId={focus.id} /></ul>}
             {data.truncated && <p className="mt-3 text-xs text-muted">This tree is very large, so only part of it is shown. Open a branch to continue.</p>}
           </Card>
         )}
@@ -119,7 +119,7 @@ export default function Shekor() {
               <p className="text-sm text-muted">Both parents' lines, going back. Scroll sideways on small screens.</p>
               <SelectField aria-label="Generations to show" className="w-40 shrink-0" value={up} onChange={(e) => setUp(Number(e.target.value))}>{[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n} {n === 1 ? 'generation' : 'generations'}</option>)}</SelectField>
             </div>
-            {!data.ancestors.father && !data.ancestors.mother ? <EmptyState title="No parents linked" icon="tree" action={<LinkButton to={`/profiles/${focus.id}/edit`}>Link parents</LinkButton>}>Add a father or mother to start the ancestor chart.</EmptyState> : <div className="overflow-x-auto pb-3"><div className="min-w-max"><PedigreeNode n={data.ancestors} /></div></div>}
+            {!data.ancestors.father && !data.ancestors.mother ? <EmptyState title="No parents linked" icon="tree" action={<LinkButton to={`/peoples/${focus.id}/edit`}>Link parents</LinkButton>}>Add a father or mother to start the ancestor chart.</EmptyState> : <div className="overflow-x-auto pb-3"><div className="min-w-max"><PedigreeNode n={data.ancestors} /></div></div>}
           </Card>
         )}
       </div>

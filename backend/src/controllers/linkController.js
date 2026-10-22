@@ -2,7 +2,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { escapeLike } from '../utils/phone.js';
 import { query } from '../db/pool.js';
-import { SUMMARY_COLUMNS, toSummary, canEditProfile } from '../services/profileService.js';
+import { SUMMARY_COLUMNS, toSummary, canEditPeople } from '../services/peopleService.js';
 import { ORG_SUMMARY_COLUMNS, toOrgSummary, canEditOrg } from '../services/orgService.js';
 import { getSettings } from '../services/settings.js';
 import { audit } from '../services/audit.js';
@@ -13,8 +13,8 @@ const MAX_ITEMS = 300;
 async function contributionsAllowed(user) {
   if (!isAdmin(user) && !(await getSettings()).allow_user_contributions) throw forbidden('Adding connections is limited to administrators right now');
 }
-const humanRow = async (id) => {
-  const { rows } = await query('SELECT id, name, created_by FROM profiles WHERE id = $1', [id]);
+const peopleRow = async (id) => {
+  const { rows } = await query('SELECT id, name, created_by FROM peoples WHERE id = $1', [id]);
   if (!rows.length) throw notFound(`Person ${id} not found`);
   return rows[0];
 };
@@ -25,21 +25,21 @@ const orgRow = async (id) => {
 };
 const extras = (b) => [b.role ?? null, b.startedOn ?? null, b.endedOn ?? null, b.note ?? null];
 
-// ---------------------------------------------------------------- memberships (human <-> organization)
+// ---------------------------------------------------------------- memberships (people <-> organization)
 const membershipOut = (r, user) => ({
   id: r.membership_id, relation: r.relation, role: r.role, startedOn: r.started_on, endedOn: r.ended_on, note: r.note,
-  canManage: isAdmin(user) || r.m_created_by === user.id || canEditProfile(user, { id: r.human_id, created_by: r.h_created_by }) || canEditOrg(user, { created_by: r.o_created_by }),
+  canManage: isAdmin(user) || r.m_created_by === user.id || canEditPeople(user, { id: r.people_id, created_by: r.h_created_by }) || canEditOrg(user, { created_by: r.o_created_by }),
 });
 
 /** The organizations a person belongs to / is affiliated with. */
-export const forHuman = asyncHandler(async (req, res) => {
+export const forPeople = asyncHandler(async (req, res) => {
   const id = req.valid.params.id;
-  await humanRow(id);
+  await peopleRow(id);
   const { rows } = await query(
-    `SELECT m.id AS membership_id, m.relation, m.role, m.started_on, m.ended_on, m.note, m.human_id, m.created_by AS m_created_by,
+    `SELECT m.id AS membership_id, m.relation, m.role, m.started_on, m.ended_on, m.note, m.people_id, m.created_by AS m_created_by,
             h.created_by AS h_created_by, o.created_by AS o_created_by, ${ORG_SUMMARY_COLUMNS}
-       FROM memberships m JOIN organizations o ON o.id = m.organization_id JOIN profiles h ON h.id = m.human_id
-      WHERE m.human_id = $1 ORDER BY m.relation, lower(o.name), m.id`, [id]);
+       FROM memberships m JOIN organizations o ON o.id = m.organization_id JOIN peoples h ON h.id = m.people_id
+      WHERE m.people_id = $1 ORDER BY m.relation, lower(o.name), m.id`, [id]);
   res.json({ items: rows.map((r) => ({ ...membershipOut(r, req.user), organization: toOrgSummary(r) })) });
 });
 
@@ -53,39 +53,39 @@ export const members = asyncHandler(async (req, res) => {
   if (q) { params.push(`%${escapeLike(q)}%`); where += ` AND (p.name ILIKE $2 OR p.nickname ILIKE $2 OR m.role ILIKE $2)`; }
   params.push(limit, (page - 1) * limit);
   const { rows } = await query(
-    `SELECT count(*) OVER() AS total, m.id AS membership_id, m.relation, m.role, m.started_on, m.ended_on, m.note, m.human_id, m.created_by AS m_created_by,
+    `SELECT count(*) OVER() AS total, m.id AS membership_id, m.relation, m.role, m.started_on, m.ended_on, m.note, m.people_id, m.created_by AS m_created_by,
             p.created_by AS h_created_by, o.created_by AS o_created_by, ${SUMMARY_COLUMNS}
-       FROM memberships m JOIN profiles p ON p.id = m.human_id JOIN organizations o ON o.id = m.organization_id
+       FROM memberships m JOIN peoples p ON p.id = m.people_id JOIN organizations o ON o.id = m.organization_id
       WHERE ${where} ORDER BY (m.relation = 'MEMBER') DESC, lower(p.name), m.id LIMIT $${params.length - 1} OFFSET $${params.length}`, params);
   const total = rows[0]?.total ?? 0;
-  res.json({ items: rows.map((r) => ({ ...membershipOut(r, req.user), human: toSummary(r) })), total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
+  res.json({ items: rows.map((r) => ({ ...membershipOut(r, req.user), people: toSummary(r) })), total, page, limit, pages: Math.max(1, Math.ceil(total / limit)) });
 });
 
 export const createMembership = asyncHandler(async (req, res) => {
   const b = req.valid.body;
   await contributionsAllowed(req.user);
-  const [h, o] = [await humanRow(b.humanId), await orgRow(b.organizationId)];
-  if (!isAdmin(req.user) && !canEditProfile(req.user, h) && !canEditOrg(req.user, o)) throw forbidden('You can only connect a person or organization you can edit');
+  const [h, o] = [await peopleRow(b.peopleId), await orgRow(b.organizationId)];
+  if (!isAdmin(req.user) && !canEditPeople(req.user, h) && !canEditOrg(req.user, o)) throw forbidden('You can only connect a person or organization you can edit');
   let row;
   try {
     ({ rows: [row] } = await query(
-      `INSERT INTO memberships (human_id, organization_id, relation, role, started_on, ended_on, note, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [b.humanId, b.organizationId, b.relation, ...extras(b), req.user.id]));
+      `INSERT INTO memberships (people_id, organization_id, relation, role, started_on, ended_on, note, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [b.peopleId, b.organizationId, b.relation, ...extras(b), req.user.id]));
   } catch (e) {
     if (e.constraint === 'memberships_unique_key') throw conflict('This person is already connected to that organization in this way');
     throw e;
   }
-  await audit(req, 'membership.create', { entityType: 'membership', entityId: row.id, summary: `${h.name} → ${o.name} (${b.relation})`, details: { humanId: h.id, organizationId: o.id } });
+  await audit(req, 'membership.create', { entityType: 'membership', entityId: row.id, summary: `${h.name} → ${o.name} (${b.relation})`, details: { peopleId: h.id, organizationId: o.id } });
   res.status(201).json({ id: row.id });
 });
 
 async function loadMembership(req) {
   const { rows } = await query(
     `SELECT m.*, h.created_by AS h_created_by, o.created_by AS o_created_by, h.name AS hname, o.name AS oname FROM memberships m
-       JOIN profiles h ON h.id = m.human_id JOIN organizations o ON o.id = m.organization_id WHERE m.id = $1`, [req.valid.params.id]);
+       JOIN peoples h ON h.id = m.people_id JOIN organizations o ON o.id = m.organization_id WHERE m.id = $1`, [req.valid.params.id]);
   const r = rows[0];
   if (!r) throw notFound('Connection not found');
-  if (!(isAdmin(req.user) || r.created_by === req.user.id || canEditProfile(req.user, { id: r.human_id, created_by: r.h_created_by }) || canEditOrg(req.user, { created_by: r.o_created_by }))) throw forbidden('You cannot change this connection');
+  if (!(isAdmin(req.user) || r.created_by === req.user.id || canEditPeople(req.user, { id: r.people_id, created_by: r.h_created_by }) || canEditOrg(req.user, { created_by: r.o_created_by }))) throw forbidden('You cannot change this connection');
   return r;
 }
 async function patchExtras(table, r, b, req, action) {

@@ -1,4 +1,4 @@
-// Female-photo privacy: blur on/off, only for female profiles, and the click -> confirm -> view flow.
+// Female-photo privacy: blur on/off, only for female peoples, and the click -> confirm -> view flow.
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -36,7 +36,7 @@ describe('photo blur', () => {
     expect(filterOf(document.querySelector('img'))).toMatch(/blur/);
   });
 
-  it('profile photo: click -> popup with blurred photo -> Cancel keeps it blurred; View un-blurs only inside the popup', async () => {
+  it('people photo: click -> popup with blurred photo -> Cancel keeps it blurred; View un-blurs only inside the popup', async () => {
     mockSettings(true);
     wrap(<RevealablePhoto src="/f.jpg" name="Fem" gender="FEMALE" />);
     await new Promise((r) => setTimeout(r, 30));

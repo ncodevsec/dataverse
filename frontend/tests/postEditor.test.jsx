@@ -11,7 +11,7 @@ describe('PostEditor', () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = vi.fn(async (...a) => { calls.push(a); return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }); });
     const onClose = vi.fn(); const onSaved = vi.fn();
-    render(<MemoryRouter><ToastProvider><PostEditor open profile={{ id: 1, name: 'X' }} post={undefined} onClose={onClose} onSaved={onSaved} /></ToastProvider></MemoryRouter>);
+    render(<MemoryRouter><ToastProvider><PostEditor open people={{ id: 1, name: 'X' }} post={undefined} onClose={onClose} onSaved={onSaved} /></ToastProvider></MemoryRouter>);
     fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Hello' } });
     fireEvent.change(screen.getByLabelText(/^Post/), { target: { value: '**bold** <b>raw</b>' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Preview' }));

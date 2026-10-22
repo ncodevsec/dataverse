@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import ProfileCard from '../components/ProfileCard.jsx';
+import PeopleCard from '../components/PeopleCard.jsx';
 import OrgCard from '../components/OrgCard.jsx';
 import { ContactRow } from './CallerId.jsx';
 import { Card, EmptyState, ErrorState, LoadingBlock, PageHeader, SearchInput } from '../components/ui.jsx';
@@ -27,8 +27,8 @@ export default function SearchPage() {
           : loading && !data ? <LoadingBlock rows={4} /> : data && (
             <>
               <section>
-                <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">People</h2><Link to={`/profiles?q=${encodeURIComponent(q)}`} className="text-sm text-accent hover:underline">All matching profiles</Link></div>
-                {data.profiles.length === 0 ? <p className="text-sm text-muted">No people match “{q}”.</p> : <div className="grid gap-3 sm:grid-cols-2">{data.profiles.map((p) => <ProfileCard key={p.id} p={p} />)}</div>}
+                <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">People</h2><Link to={`/peoples?q=${encodeURIComponent(q)}`} className="text-sm text-accent hover:underline">All matching peoples</Link></div>
+                {data.peoples.length === 0 ? <p className="text-sm text-muted">No people match “{q}”.</p> : <div className="grid gap-3 sm:grid-cols-2">{data.peoples.map((p) => <PeopleCard key={p.id} p={p} />)}</div>}
               </section>
               <section>
                 <div className="mb-2 flex items-center justify-between"><h2 className="font-semibold">Organizations</h2><Link to={`/organizations?q=${encodeURIComponent(q)}`} className="text-sm text-accent hover:underline">All matching organizations</Link></div>

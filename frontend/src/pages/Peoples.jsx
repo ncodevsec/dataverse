@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ProfileList, VIEW_MODES, ViewSwitcher } from '../components/ProfileCard.jsx';
+import { PeopleList, VIEW_MODES, ViewSwitcher } from '../components/PeopleCard.jsx';
 import { EmptyState, ErrorState, InfiniteFooter, LinkButton, LoadingBlock, PageHeader, SearchInput, SelectField, Button } from '../components/ui.jsx';
 import { useAuth, useSite } from '../context/AppContext.jsx';
 import { useDebounce, useFetch, useInfiniteList, useTitle } from '../hooks/hooks.js';
 import { api } from '../lib/api.js';
 
 const BLOOD = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-const VIEW_KEY = 'dv-profiles-view';
+const VIEW_KEY = 'dv-peoples-view';
 const readView = () => { try { const v = localStorage.getItem(VIEW_KEY); return VIEW_MODES.some((m) => m.id === v) ? v : 'grid-h'; } catch { return 'grid-h'; } };
 
-export default function Profiles() {
+export default function Peoples() {
   const { user } = useAuth();
-  useTitle('Profiles', useSite().siteName);
+  useTitle('Peoples', useSite().siteName);
   const [sp, setSp] = useSearchParams();
   const [text, setText] = useState(sp.get('q') || '');
   const dq = useDebounce(text, 300);
@@ -28,15 +28,15 @@ export default function Profiles() {
   };
   useEffect(() => { if (dq !== (sp.get('q') || '')) update({ q: dq }); /* eslint-disable-next-line */ }, [dq]);
 
-  const facets = useFetch(() => api.get('/profiles/facets'), []);
-  const list = useInfiniteList((page) => api.get('/profiles', { q: sp.get('q') || '', ...filters, page, limit }), [sp.toString(), limit]);
+  const facets = useFetch(() => api.get('/peoples/facets'), []);
+  const list = useInfiniteList((page) => api.get('/peoples', { q: sp.get('q') || '', ...filters, page, limit }), [sp.toString(), limit]);
   const anyFilter = Object.entries(filters).some(([k, v]) => v && k !== 'sort') || sp.get('q');
   const clear = () => { setText(''); setSp({}, { replace: true }); };
 
   return (
     <div>
-      <PageHeader title="Profiles" subtitle="People in the directory. Organizations have their own page."
-        actions={<><ViewSwitcher value={view} onChange={setView} /><LinkButton to="/profiles/new" variant="primary" icon="plus">Add profile</LinkButton></>} />
+      <PageHeader title="Peoples" subtitle="People in the directory. Organizations have their own page."
+        actions={<><ViewSwitcher value={view} onChange={setView} /><LinkButton to="/peoples/new" variant="primary" icon="plus">Add people</LinkButton></>} />
       <SearchInput value={text} onChange={setText} placeholder="Search by name, nickname, email, phone or ID" />
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <SelectField aria-label="Gender" value={filters.gender} onChange={(e) => update({ gender: e.target.value })}><option value="">Any gender</option><option value="MALE">Male</option><option value="FEMALE">Female</option></SelectField>
@@ -50,11 +50,11 @@ export default function Profiles() {
 
       <div className="mt-5">
         {list.error && list.items.length === 0 ? <ErrorState error={list.error} onRetry={list.reload} /> : list.initialLoading ? <LoadingBlock rows={6} /> :
-          list.items.length === 0 ? <EmptyState title="No profiles found" action={anyFilter ? <Button onClick={clear}>Clear filters</Button> : <LinkButton to="/profiles/new" variant="primary">Add the first profile</LinkButton>}>Try a different spelling, a shorter search or fewer filters.</EmptyState> : (
+          list.items.length === 0 ? <EmptyState title="No peoples found" action={anyFilter ? <Button onClick={clear}>Clear filters</Button> : <LinkButton to="/peoples/new" variant="primary">Add the first people</LinkButton>}>Try a different spelling, a shorter search or fewer filters.</EmptyState> : (
             <>
-              <p className="mb-3 text-sm text-muted">{list.total.toLocaleString()} {list.total === 1 ? 'profile' : 'profiles'}</p>
-              <ProfileList items={list.items} variant={view} />
-              <InfiniteFooter list={list} label="profiles" />
+              <p className="mb-3 text-sm text-muted">{list.total.toLocaleString()} {list.total === 1 ? 'people' : 'peoples'}</p>
+              <PeopleList items={list.items} variant={view} />
+              <InfiniteFooter list={list} label="peoples" />
             </>
           )}
       </div>

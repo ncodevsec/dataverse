@@ -31,7 +31,7 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
     const payload = verifyToken(token);
     const { rows } = await query(
       `SELECT id, email, username, display_name, role, is_active, must_change_password, token_version, approval_status,
-              profile_id, theme, preferences, last_login_at, created_at
+              people_id, theme, preferences, last_login_at, created_at
          FROM users WHERE id = $1`,
       [payload.sub],
     );

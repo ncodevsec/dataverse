@@ -23,11 +23,11 @@ function SecretModal({ secret, onClose }) {
 
 function UserForm({ open, user, onClose, onSaved, onSecret }) {
   const toast = useToast();
-  const blank = { displayName: '', username: '', email: '', password: '', role: 'USER', profileId: null, isActive: true };
+  const blank = { displayName: '', username: '', email: '', password: '', role: 'USER', peopleId: null, isActive: true };
   const [form, setForm] = useState(blank);
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setForm(user ? { displayName: user.displayName, username: user.username, email: user.email, password: '', role: user.role, profileId: user.profileId, isActive: user.isActive } : blank); setErrors({}); } /* eslint-disable-next-line */ }, [open, user]);
+  useEffect(() => { if (open) { setForm(user ? { displayName: user.displayName, username: user.username, email: user.email, password: '', role: user.role, peopleId: user.peopleId, isActive: user.isActive } : blank); setErrors({}); } /* eslint-disable-next-line */ }, [open, user]);
   async function save(e) {
     e?.preventDefault(); setBusy(true); setErrors({});
     try {
@@ -51,7 +51,7 @@ function UserForm({ open, user, onClose, onSaved, onSecret }) {
         </div>
         {!user && <TextField label="Password" type="password" autoComplete="new-password" value={form.password} error={errors.password} onChange={(e) => setForm({ ...form, password: e.target.value })} hint="Leave empty to generate a temporary password" />}
         <SelectField label="Role" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} hint={form.role === 'ADMIN' ? 'Administrators can manage all data, users and settings.' : undefined}><option value="USER">User</option><option value="ADMIN">Administrator</option></SelectField>
-        <ProfilePicker label="Linked profile (optional)" value={form.profileId} onChange={(v) => setForm({ ...form, profileId: v })} initialLabel={user?.profileName} error={errors.profileId} hint="Lets this person edit their own profile and see their NID." />
+        <ProfilePicker label="Linked people (optional)" value={form.peopleId} onChange={(v) => setForm({ ...form, peopleId: v })} initialLabel={user?.peopleName} error={errors.peopleId} hint="Lets this person edit their own people and see their NID." />
         {user && <Checkbox label="Account is active" hint="Inactive users cannot sign in." checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />}
         <button type="submit" className="sr-only">Save</button>
       </form>
@@ -134,7 +134,7 @@ export default function Users() {
       <ConfirmDialog open={!!reset} title="Reset password?" confirmLabel="Reset password" loading={busy} onConfirm={doReset} onClose={() => setReset(null)}
         message={reset ? `${reset.displayName} will be signed out everywhere and given a new temporary password that you can share with them.` : ''} />
       <ConfirmDialog open={!!del} danger title={`Delete ${del?.displayName}?`} confirmLabel="Delete user" loading={busy} onConfirm={doDelete} onClose={() => setDel(null)}
-        message="This permanently deletes the account. Profiles and contacts they created are kept. Consider deactivating instead if you may need the account again." />
+        message="This permanently deletes the account. Peoples and contacts they created are kept. Consider deactivating instead if you may need the account again." />
     </div>
   );
 }

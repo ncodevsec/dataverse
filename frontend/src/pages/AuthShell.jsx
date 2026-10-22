@@ -19,7 +19,7 @@ export default function AuthShell({ title, subtitle, children, footer }) {
           <p className="max-w-md font-display text-3xl font-bold leading-tight">Know who is who, and how everyone is connected.</p>
           <p className="mt-3 max-w-md text-muted">{siteDescription}</p>
         </div>
-        <p className="text-xs text-muted">Profiles · Shekor family tree · Caller ID</p>
+        <p className="text-xs text-muted">Peoples · Shekor family tree · Caller ID</p>
       </aside>
       <main className="flex flex-col px-5 py-6 sm:px-10">
         <div className="flex items-center justify-between lg:justify-end">

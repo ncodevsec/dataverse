@@ -5,7 +5,7 @@ let cache = { at: 0, value: null };
 
 export const DEFAULTS = {
   site_name: 'Dataverse',
-  site_description: 'Family profiles, generation trees and a shared contact directory.',
+  site_description: 'Family peoples, generation trees and a shared contact directory.',
   registration_enabled: true,
   allow_user_contributions: true,
   blur_female_photos: false,

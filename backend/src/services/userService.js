@@ -8,13 +8,13 @@ export const serializeUser = (u) => ({
   isActive: u.is_active,
   approvalStatus: u.approval_status,
   mustChangePassword: u.must_change_password,
-  profileId: u.profile_id,
+  peopleId: u.people_id,
   theme: u.theme,
   preferences: u.preferences || {},
   lastLoginAt: u.last_login_at ?? null,
   createdAt: u.created_at,
-  ...(u.profile_name !== undefined ? { profileName: u.profile_name } : {}),
+  ...(u.people_name !== undefined ? { peopleName: u.people_name } : {}),
 });
 
 export const USER_COLUMNS = `id, email, username, display_name, role, is_active, must_change_password, token_version, approval_status,
-  profile_id, theme, preferences, last_login_at, created_at`;
+  people_id, theme, preferences, last_login_at, created_at`;

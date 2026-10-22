@@ -17,26 +17,26 @@ function Row({ label, children }) {
 }
 const Section = ({ title, children }) => <Card className="p-5"><h2 className="mb-1 text-base font-semibold">{title}</h2><dl className="divide-y divide-line">{children}</dl></Card>;
 
-export default function ProfileView() {
+export default function PeopleView() {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
   const { siteName } = useSite();
   const { user } = useAuth();
-  const { data, error, loading, reload } = useFetch(() => api.get(`/profiles/${id}`), [id]);
+  const { data, error, loading, reload } = useFetch(() => api.get(`/peoples/${id}`), [id]);
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
-  useTitle(data?.profile.name, siteName);
+  useTitle(data?.people.name, siteName);
 
-  if (error) return error.status === 404 ? <EmptyState title="Profile not found" action={<LinkButton to="/profiles">Back to profiles</LinkButton>}>This profile may have been removed.</EmptyState> : <ErrorState error={error} onRetry={reload} />;
+  if (error) return error.status === 404 ? <EmptyState title="People not found" action={<LinkButton to="/peoples">Back to peoples</LinkButton>}>This people may have been removed.</EmptyState> : <ErrorState error={error} onRetry={reload} />;
   if (loading && !data) return <LoadingBlock rows={5} />;
-  const { profile: p, family: f } = data;
+  const { people: p, family: f } = data;
   const df = user.preferences?.dateFormat || 'dmy';
   const years = age(p.dob, p.dateOfDeath);
 
   async function remove() {
     setBusy(true);
-    try { await api.del(`/profiles/${p.id}`); toast.success(`Deleted ${p.name}`); navigate('/profiles', { replace: true }); } catch (e) { toast.error(e.message); setBusy(false); setConfirm(false); }
+    try { await api.del(`/peoples/${p.id}`); toast.success(`Deleted ${p.name}`); navigate('/peoples', { replace: true }); } catch (e) { toast.error(e.message); setBusy(false); setConfirm(false); }
   }
   const NETWORKS = [['facebook', 'Facebook'], ['instagram', 'Instagram'], ['tiktok', 'TikTok']];
   const social = NETWORKS.flatMap(([k, label]) => (p.socialLinks?.[k] || []).map((v, i, all) => ({ k, label: all.length > 1 ? `${label} ${i + 1}` : label, value: v })));
@@ -44,7 +44,7 @@ export default function ProfileView() {
 
   return (
     <div className="space-y-5">
-      <Link to="/profiles" className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><Icon name="left" className="h-4 w-4" />Profiles</Link>
+      <Link to="/peoples" className="inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><Icon name="left" className="h-4 w-4" />Peoples</Link>
 
       <Card className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
         <RevealablePhoto src={p.photoUrl} name={p.name} gender={p.gender} size="xl" />
@@ -57,11 +57,11 @@ export default function ProfileView() {
             {p.maritalStatus && <Badge>{MARITAL[p.maritalStatus]}</Badge>}
             {p.bloodGroup && <Badge tone="accent">{p.bloodGroup}</Badge>}
             {p.dateOfDeath && <Badge>Deceased</Badge>}
-            {p.tags.map((t) => <Link key={t} to={`/profiles?tag=${encodeURIComponent(t)}`}><Badge>{t}</Badge></Link>)}
+            {p.tags.map((t) => <Link key={t} to={`/peoples?tag=${encodeURIComponent(t)}`}><Badge>{t}</Badge></Link>)}
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <LinkButton to={`/shekor/${p.id}`} icon="tree" variant="soft">View family tree</LinkButton>
-            {p.permissions.canEdit && <LinkButton to={`/profiles/${p.id}/edit`} icon="edit">Edit</LinkButton>}
+            {p.permissions.canEdit && <LinkButton to={`/peoples/${p.id}/edit`} icon="edit">Edit</LinkButton>}
             {p.permissions.canDelete && <Button icon="trash" variant="ghost" className="text-danger" onClick={() => setConfirm(true)}>Delete</Button>}
           </div>
         </div>
@@ -80,14 +80,14 @@ export default function ProfileView() {
           <Row label="Phone">{p.phone && <a className="text-accent hover:underline" href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}>{p.phone}</a>}</Row>
           <Row label="Website">{p.website && (safeUrl(p.website, 'website') ? <a className="inline-flex items-center gap-1 break-all text-accent hover:underline" href={safeUrl(p.website, 'website')} target="_blank" rel="noopener noreferrer nofollow">{p.website.replace(/^https?:\/\/(www\.)?/, '')}<Icon name="external" className="h-3 w-3" /></a> : p.website)}</Row>
           <Row label="Email">{p.email && <a className="text-accent hover:underline" href={`mailto:${p.email}`}>{p.email}</a>}</Row>
-          <Row label="Contact list">{p.savedContactsCount > 0 ? <LinkButton size="sm" icon="phone" variant="soft" to={`/caller-id?relative=${p.id}`}>View contact list ({p.savedContactsCount.toLocaleString()})</LinkButton> : <span className="text-muted">No contacts saved under this profile</span>}</Row>
+          <Row label="Contact list">{p.savedContactsCount > 0 ? <LinkButton size="sm" icon="phone" variant="soft" to={`/caller-id?relative=${p.id}`}>View contact list ({p.savedContactsCount.toLocaleString()})</LinkButton> : <span className="text-muted">No contacts saved under this people</span>}</Row>
           {social.map(({ k, label, value }, i) => { const href = safeUrl(value, k); return <Row key={`${k}${i}`} label={label}>{href ? <a className="inline-flex items-center gap-1 break-all text-accent hover:underline" href={href} target="_blank" rel="noopener noreferrer nofollow">{value.replace(/^https?:\/\/(www\.)?/, '')}<Icon name="external" className="h-3 w-3" /></a> : value}</Row>; })}
         </Section>
         <Section title="Address">
           <Row label="Present">{address(p.presentStreet, p.presentCity)}</Row>
           <Row label="Permanent">{address(p.street, p.unionName, p.subDistrict, p.district, p.state, p.zip, p.country) || (p.inheritedAddress && (
             <span>{address(p.inheritedAddress.street, p.inheritedAddress.unionName, p.inheritedAddress.subDistrict, p.inheritedAddress.district, p.inheritedAddress.state, p.inheritedAddress.zip, p.inheritedAddress.country)}
-              <span className="mt-0.5 block text-xs text-muted">Same as <Link className="text-accent hover:underline" to={`/profiles/${p.inheritedAddress.from.id}`}>{p.inheritedAddress.from.name}</Link> (father's side) — add an address to override</span></span>))}</Row>
+              <span className="mt-0.5 block text-xs text-muted">Same as <Link className="text-accent hover:underline" to={`/peoples/${p.inheritedAddress.from.id}`}>{p.inheritedAddress.from.name}</Link> (father's side) — add an address to override</span></span>))}</Row>
         </Section>
         <Section title="Education & work">
           <Row label="Education">{address(p.educationLevel, p.educationGroup)}</Row>
@@ -98,13 +98,13 @@ export default function ProfileView() {
       {p.about && <Card className="p-5"><h2 className="mb-2 text-base font-semibold">About</h2><p className="whitespace-pre-wrap text-sm">{p.about}</p></Card>}
 
       <FamilyCard p={p} f={f} />
-      <MembershipsCard profile={p} />
+      <MembershipsCard people={p} />
 
-      <SubjectPosts subject={{ kind: 'human', id: p.id, name: p.name }} />
+      <SubjectPosts subject={{ kind: 'people', id: p.id, name: p.name }} />
       <p className="text-xs text-muted">Last updated {fmtDateTime(p.updatedAt)}</p>
 
-      <ConfirmDialog open={confirm} title={`Delete ${p.name}?`} danger confirmLabel="Delete profile" loading={busy} onConfirm={remove} onClose={() => setConfirm(false)}
-        message="This permanently removes the profile, its photo and notes. Relatives stay, but their link to this person is removed. This cannot be undone." />
+      <ConfirmDialog open={confirm} title={`Delete ${p.name}?`} danger confirmLabel="Delete people" loading={busy} onConfirm={remove} onClose={() => setConfirm(false)}
+        message="This permanently removes the people, its photo and notes. Relatives stay, but their link to this person is removed. This cannot be undone." />
     </div>
   );
 }

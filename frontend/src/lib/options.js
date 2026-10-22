@@ -1,4 +1,4 @@
-// Fixed choices for the profile form. Values are stored as-is (English), so keep them stable.
+// Fixed choices for the people form. Values are stored as-is (English), so keep them stable.
 export const POLITICAL_VIEWS = [
   'Bangladesh Awami League',
   'Bangladesh Nationalist Party (BNP)',
@@ -46,9 +46,9 @@ export const orgTypeLabel = (id) => ORG_TYPES.find((t) => t.id === id)?.label ||
 
 /** A person's relation to an organization, worded from each side. */
 export const MEMBERSHIP_RELATIONS = [
-  { id: 'MEMBER', human: 'is a member of', org: 'has as a member', group: 'Memberships' },
-  { id: 'AFFILIATED', human: 'is affiliated with', org: 'is affiliated with', group: 'Affiliations' },
-  { id: 'CONNECTED', human: 'is connected to', org: 'is connected to', group: 'Connections' },
+  { id: 'MEMBER', people: 'is a member of', org: 'has as a member', group: 'Memberships' },
+  { id: 'AFFILIATED', people: 'is affiliated with', org: 'is affiliated with', group: 'Affiliations' },
+  { id: 'CONNECTED', people: 'is connected to', org: 'is connected to', group: 'Connections' },
 ];
 
 /** Organization <-> organization links, worded from the viewed organization's side. dir 'out': this -> other. */

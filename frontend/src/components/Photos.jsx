@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Avatar, Button, Modal, cx, useBlur } from './ui.jsx';
 
 /**
- * Profile-page photo. When the privacy blur applies, clicking it opens a confirmation dialog that shows the blurred photo;
+ * People-page photo. When the privacy blur applies, clicking it opens a confirmation dialog that shows the blurred photo;
  * only "View" removes the blur (inside the dialog). Closing the dialog starts over, so it is asked every time.
  */
 export function RevealablePhoto({ src, name, gender, size = 'xl' }) {

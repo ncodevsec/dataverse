@@ -1,6 +1,6 @@
 import { Button, IconButton, TextField } from './ui.jsx';
 
-export const NETWORKS = [['facebook', 'Facebook', 'Profile link or username'], ['instagram', 'Instagram', 'Profile link or @username'], ['tiktok', 'TikTok', 'Profile link or @username']];
+export const NETWORKS = [['facebook', 'Facebook', 'People link or username'], ['instagram', 'Instagram', 'People link or @username'], ['tiktok', 'TikTok', 'People link or @username']];
 export const emptySocial = () => Object.fromEntries(NETWORKS.map(([k]) => [k, ['']]));
 
 /** Form state for social links coming from the API (at least one empty input per network). */

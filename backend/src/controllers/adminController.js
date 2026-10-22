@@ -9,9 +9,9 @@ import { audit } from '../services/audit.js';
 import { getSettings, updateSettings, DEFAULTS } from '../services/settings.js';
 import { writeBackup, backupFileName } from '../services/backupService.js';
 
-const USER_SELECT = `SELECT u.id, u.email, u.username, u.display_name, u.role, u.is_active, u.must_change_password, u.profile_id,
-  u.theme, u.preferences, u.last_login_at, u.created_at, u.approval_status, p.name AS profile_name
-  FROM users u LEFT JOIN profiles p ON p.id = u.profile_id`;
+const USER_SELECT = `SELECT u.id, u.email, u.username, u.display_name, u.role, u.is_active, u.must_change_password, u.people_id,
+  u.theme, u.preferences, u.last_login_at, u.created_at, u.approval_status, p.name AS people_name
+  FROM users u LEFT JOIN peoples p ON p.id = u.people_id`;
 
 async function activeAdminCount(client = { query }, excludingId = null) {
   const { rows } = await client.query(`SELECT count(*)::int AS n FROM users WHERE role = 'ADMIN' AND is_active AND ($1::uuid IS NULL OR id <> $1)`, [excludingId]);
@@ -41,21 +41,21 @@ export const getUser = asyncHandler(async (req, res) => {
   res.json({ user: serializeUser(rows[0]) });
 });
 
-async function assertProfileExists(id) {
+async function assertPeopleExists(id) {
   if (id == null) return;
-  const { rows } = await query('SELECT 1 FROM profiles WHERE id = $1', [id]);
-  if (!rows.length) throw badRequest(`Profile ${id} does not exist`, { profileId: 'No profile with this ID' });
+  const { rows } = await query('SELECT 1 FROM peoples WHERE id = $1', [id]);
+  if (!rows.length) throw badRequest(`People ${id} does not exist`, { peopleId: 'No people with this ID' });
 }
 
 export const createUser = asyncHandler(async (req, res) => {
   const b = req.valid.body;
-  await assertProfileExists(b.profileId);
+  await assertPeopleExists(b.peopleId);
   const temporaryPassword = b.password ? null : generateTemporaryPassword();
   const hash = await hashPassword(b.password || temporaryPassword);
   const { rows } = await query(
-    `INSERT INTO users (email, username, display_name, password_hash, role, profile_id, must_change_password, approval_status, approved_by, approved_at)
+    `INSERT INTO users (email, username, display_name, password_hash, role, people_id, must_change_password, approval_status, approved_by, approved_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,'APPROVED',$8,now()) RETURNING id`,
-    [b.email, b.username, b.displayName, hash, b.role, b.profileId ?? null, b.mustChangePassword, req.user.id]);
+    [b.email, b.username, b.displayName, hash, b.role, b.peopleId ?? null, b.mustChangePassword, req.user.id]);
   await audit(req, 'user.create', { entityType: 'user', entityId: rows[0].id, summary: `Created ${b.role} account ${b.email}`, details: { role: b.role, email: b.email } });
   const user = (await query(`${USER_SELECT} WHERE u.id = $1`, [rows[0].id])).rows[0];
   // The generated password is returned exactly once and is never stored or logged in clear text.
@@ -75,7 +75,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   if ((demoting || deactivating) && before.role === 'ADMIN' && (await activeAdminCount(undefined, id)) === 0) {
     throw conflict('At least one active administrator must remain');
   }
-  await assertProfileExists(b.profileId);
+  await assertPeopleExists(b.peopleId);
 
   const sets = [];
   const vals = [id];
@@ -85,7 +85,7 @@ export const updateUser = asyncHandler(async (req, res) => {
   if (b.email !== undefined) add('email', b.email);
   if (b.role !== undefined) add('role', b.role);
   if (b.isActive !== undefined) add('is_active', b.isActive);
-  if (b.profileId !== undefined) add('profile_id', b.profileId);
+  if (b.peopleId !== undefined) add('people_id', b.peopleId);
   // role / status changes invalidate that user's existing sessions
   if (b.role !== undefined && b.role !== before.role || deactivating) sets.push('token_version = token_version + 1');
   if (sets.length) await query(`UPDATE users SET ${sets.join(', ')} WHERE id = $1`, vals);
@@ -194,19 +194,19 @@ export const stats = asyncHandler(async (_req, res) => {
       (SELECT count(*) FROM users WHERE role = 'ADMIN')::int AS admins,
       (SELECT count(*) FROM users WHERE NOT is_active)::int AS inactive_users,
       (SELECT count(*) FROM users WHERE approval_status = 'PENDING')::int AS pending_users,
-      (SELECT count(*) FROM profiles)::int AS profiles,
+      (SELECT count(*) FROM peoples)::int AS peoples,
       (SELECT count(*) FROM organizations)::int AS organizations,
-      (SELECT count(*) FROM profiles WHERE photo_updated_at IS NOT NULL)::int AS profiles_with_photo,
-      (SELECT count(*) FROM profiles WHERE father_id IS NOT NULL OR mother_id IS NOT NULL)::int AS profiles_with_parents,
-      (SELECT count(*) FROM profiles WHERE spouse_id IS NOT NULL)::int AS married,
+      (SELECT count(*) FROM peoples WHERE photo_updated_at IS NOT NULL)::int AS peoples_with_photo,
+      (SELECT count(*) FROM peoples WHERE father_id IS NOT NULL OR mother_id IS NOT NULL)::int AS peoples_with_parents,
+      (SELECT count(*) FROM peoples WHERE spouse_id IS NOT NULL)::int AS married,
       (SELECT count(*) FROM caller_contacts)::int AS contacts,
       (SELECT count(DISTINCT number_digits) FROM caller_contacts)::int AS unique_numbers,
-      (SELECT count(*) FROM caller_contacts WHERE profile_id IS NOT NULL)::int AS linked_contacts,
+      (SELECT count(*) FROM caller_contacts WHERE people_id IS NOT NULL)::int AS linked_contacts,
       (SELECT count(*) FROM posts)::int AS posts,
       (SELECT count(*) FROM audit_logs)::int AS audit_events`),
     query(`SELECT to_char(d::date, 'YYYY-MM-DD') AS day,
         (SELECT count(*) FROM users WHERE created_at::date = d::date)::int AS users,
-        (SELECT count(*) FROM profiles WHERE created_at::date = d::date)::int AS profiles,
+        (SELECT count(*) FROM peoples WHERE created_at::date = d::date)::int AS peoples,
         (SELECT count(*) FROM caller_contacts WHERE created_at::date = d::date)::int AS contacts
        FROM generate_series(current_date - 13, current_date, interval '1 day') AS d ORDER BY d`),
     query(`SELECT id, display_name, email, role, created_at FROM users ORDER BY created_at DESC LIMIT 5`),
@@ -215,8 +215,8 @@ export const stats = asyncHandler(async (_req, res) => {
   const t = totals.rows[0];
   res.json({
     totals: {
-      users: t.users, admins: t.admins, inactiveUsers: t.inactive_users, pendingUsers: t.pending_users, profiles: t.profiles, organizations: t.organizations, profilesWithPhoto: t.profiles_with_photo,
-      profilesWithParents: t.profiles_with_parents, married: t.married, contacts: t.contacts, uniqueNumbers: t.unique_numbers,
+      users: t.users, admins: t.admins, inactiveUsers: t.inactive_users, pendingUsers: t.pending_users, peoples: t.peoples, organizations: t.organizations, peoplesWithPhoto: t.peoples_with_photo,
+      peoplesWithParents: t.peoples_with_parents, married: t.married, contacts: t.contacts, uniqueNumbers: t.unique_numbers,
       linkedContacts: t.linked_contacts, posts: t.posts, auditEvents: t.audit_events,
     },
     daily: daily.rows,

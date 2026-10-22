@@ -9,7 +9,7 @@ import { useDebounce, useFetch, useInfiniteList } from '../../hooks/hooks.js';
 import { orgTypeLabel } from '../../lib/options.js';
 import { api } from '../../lib/api.js';
 
-export function AdminProfiles() {
+export function AdminPeoples() {
   const toast = useToast();
   const [text, setText] = useState('');
   const dq = useDebounce(text, 300);
@@ -18,20 +18,20 @@ export function AdminProfiles() {
   const [del, setDel] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => setPage(1), [dq, sort]);
-  const { data, error, loading, reload } = useFetch(() => api.get('/profiles', { q: dq, sort, page, limit: 25 }), [dq, sort, page]);
+  const { data, error, loading, reload } = useFetch(() => api.get('/peoples', { q: dq, sort, page, limit: 25 }), [dq, sort, page]);
 
   async function remove() {
     setBusy(true);
-    try { await api.del(`/profiles/${del.id}`); toast.success(`Deleted ${del.name}`); setDel(null); reload(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+    try { await api.del(`/peoples/${del.id}`); toast.success(`Deleted ${del.name}`); setDel(null); reload(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   }
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <SearchInput className="min-w-[14rem] flex-1" value={text} onChange={setText} placeholder="Search profiles by name, ID, phone…" />
+        <SearchInput className="min-w-[14rem] flex-1" value={text} onChange={setText} placeholder="Search peoples by name, ID, phone…" />
         <SelectField aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value)}><option value="name">Name A–Z</option><option value="newest">Newest first</option><option value="id">By ID</option></SelectField>
-        <LinkButton to="/profiles/new" variant="primary" icon="plus">Add profile</LinkButton>
+        <LinkButton to="/peoples/new" variant="primary" icon="plus">Add people</LinkButton>
       </div>
-      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock /> : data.items.length === 0 ? <EmptyState title="No profiles match" icon="users" /> : (
+      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock /> : data.items.length === 0 ? <EmptyState title="No peoples match" icon="users" /> : (
         <>
           <Card className="overflow-x-auto">
             <table className="w-full min-w-[38rem] text-left text-sm">
@@ -39,12 +39,12 @@ export function AdminProfiles() {
               <tbody className="divide-y divide-line">
                 {data.items.map((p) => (
                   <tr key={p.id}>
-                    <td className="px-4 py-2.5"><Link to={`/profiles/${p.id}`} className="flex items-center gap-3 hover:text-accent"><Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} /><span className="font-medium">{p.name}</span></Link></td>
+                    <td className="px-4 py-2.5"><Link to={`/peoples/${p.id}`} className="flex items-center gap-3 hover:text-accent"><Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} /><span className="font-medium">{p.name}</span></Link></td>
                     <td className="px-4 py-2.5 text-muted">#{p.id}</td>
                     <td className="px-4 py-2.5 text-muted">{p.phone || '—'}</td>
                     <td className="px-4 py-2.5 text-muted">{p.district || '—'}</td>
                     <td className="px-4 py-2.5"><div className="flex justify-end">
-                      <Link to={`/profiles/${p.id}/edit`} aria-label={`Edit ${p.name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" title="Edit"><svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg></Link>
+                      <Link to={`/peoples/${p.id}/edit`} aria-label={`Edit ${p.name}`} className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" title="Edit"><svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></svg></Link>
                       <IconButton icon="trash" label={`Delete ${p.name}`} onClick={() => setDel(p)} />
                     </div></td>
                   </tr>
@@ -52,11 +52,11 @@ export function AdminProfiles() {
               </tbody>
             </table>
           </Card>
-          <Pagination page={data.page} pages={data.pages} total={data.total} label="profiles" onPage={setPage} />
+          <Pagination page={data.page} pages={data.pages} total={data.total} label="peoples" onPage={setPage} />
         </>
       )}
-      <ConfirmDialog open={!!del} danger title={`Delete ${del?.name}?`} confirmLabel="Delete profile" loading={busy} onConfirm={remove} onClose={() => setDel(null)}
-        message="The profile, its photo and notes are permanently removed, and relatives lose their link to this person. This is recorded in the audit log." />
+      <ConfirmDialog open={!!del} danger title={`Delete ${del?.name}?`} confirmLabel="Delete people" loading={busy} onConfirm={remove} onClose={() => setDel(null)}
+        message="The people, its photo and notes are permanently removed, and relatives lose their link to this person. This is recorded in the audit log." />
     </div>
   );
 }
@@ -91,14 +91,14 @@ export function AdminContacts() {
         <>
           <Card className="overflow-x-auto">
             <table className="w-full min-w-[38rem] text-left text-sm">
-              <thead className="border-b border-line text-xs text-muted"><tr><th className="px-4 py-3 font-medium">Name</th><th className="px-4 py-3 font-medium">Number</th><th className="px-4 py-3 font-medium">Saved by</th><th className="px-4 py-3 font-medium">Profile</th><th className="px-4 py-3" /></tr></thead>
+              <thead className="border-b border-line text-xs text-muted"><tr><th className="px-4 py-3 font-medium">Name</th><th className="px-4 py-3 font-medium">Number</th><th className="px-4 py-3 font-medium">Saved by</th><th className="px-4 py-3 font-medium">People</th><th className="px-4 py-3" /></tr></thead>
               <tbody className="divide-y divide-line">
                 {data.items.map((c) => (
                   <tr key={c.id}>
                     <td className="px-4 py-2.5 font-medium">{c.name}</td>
                     <td className="px-4 py-2.5 text-muted">{c.number}</td>
                     <td className="px-4 py-2.5 text-muted">{c.relativeName || '—'}</td>
-                    <td className="px-4 py-2.5">{c.profileId ? <Link to={`/profiles/${c.profileId}`}><Badge tone="accent">{c.profileName}</Badge></Link> : <span className="text-muted">—</span>}</td>
+                    <td className="px-4 py-2.5">{c.peopleId ? <Link to={`/peoples/${c.peopleId}`}><Badge tone="accent">{c.peopleName}</Badge></Link> : <span className="text-muted">—</span>}</td>
                     <td className="px-4 py-2.5"><div className="flex justify-end"><IconButton icon="edit" label={`Edit ${c.name}`} onClick={() => setEdit(c)} /><IconButton icon="trash" label={`Delete ${c.name}`} onClick={() => setDel(c)} /></div></td>
                   </tr>
                 ))}
@@ -123,7 +123,7 @@ function ContactTools({ open, onClose, relatives, onChanged }) {
   const [busy, setBusy] = useState(false);
   async function relink() {
     setBusy(true);
-    try { const d = await api.post('/admin/contacts/relink'); toast.success(`${d.linked} contacts linked to profiles`); onChanged(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
+    try { const d = await api.post('/admin/contacts/relink'); toast.success(`${d.linked} contacts linked to peoples`); onChanged(); } catch (e) { toast.error(e.message); } finally { setBusy(false); }
   }
   async function wipe() {
     setBusy(true);
@@ -133,8 +133,8 @@ function ContactTools({ open, onClose, relatives, onChanged }) {
     <Modal open={open} onClose={onClose} title="Caller ID tools" size="lg">
       <div className="space-y-6 text-sm">
         <section>
-          <h3 className="font-semibold">Link contacts to profiles</h3>
-          <p className="mb-2 text-muted">Matches contacts to a profile when the phone number belongs to exactly one profile. Existing links are never changed.</p>
+          <h3 className="font-semibold">Link contacts to peoples</h3>
+          <p className="mb-2 text-muted">Matches contacts to a people when the phone number belongs to exactly one people. Existing links are never changed.</p>
           <Button loading={busy} onClick={relink}>Run matching</Button>
         </section>
         <section>

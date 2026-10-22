@@ -12,7 +12,7 @@ export function ThemeToggle({ className }) {
 
 const NAV = [
   { to: '/', label: 'Home', icon: 'home', end: true },
-  { to: '/profiles', label: 'Profiles', icon: 'users' },
+  { to: '/peoples', label: 'Peoples', icon: 'users' },
   { to: '/organizations', label: 'Organizations', icon: 'building' },
   { to: '/posts', label: 'Posts', icon: 'list' },
   { to: '/shekor', label: 'Shekor', icon: 'tree' },
@@ -36,7 +36,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
-  const bottom = [NAV[0], NAV[1], NAV[2], NAV[3], NAV[5], { to: '/settings', label: 'Account', icon: 'user' }]; // Home, Profiles, Organizations, Posts, Caller ID, Account
+  const bottom = [NAV[0], NAV[1], NAV[2], NAV[3], NAV[5], { to: '/settings', label: 'Account', icon: 'user' }]; // Home, Peoples, Organizations, Posts, Caller ID, Account
 
   return (
     <div className="min-h-dvh md:pl-64">

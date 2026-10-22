@@ -60,7 +60,7 @@ export const adminUserCreateSchema = z.object({
   email: emailField,
   password: passwordField.optional(), // generated when omitted
   role: z.enum(['USER', 'ADMIN']).default('USER'),
-  profileId: optId,
+  peopleId: optId,
   mustChangePassword: z.boolean().default(true),
 }).strict();
 
@@ -70,7 +70,7 @@ export const adminUserUpdateSchema = z.object({
   email: emailField.optional(),
   role: z.enum(['USER', 'ADMIN']).optional(),
   isActive: z.boolean().optional(),
-  profileId: optId,
+  peopleId: optId,
 }).strict();
 
 export const adminResetPasswordSchema = z.object({ password: passwordField.optional() }).strict();
@@ -83,7 +83,7 @@ export const userListQuery = z.object({
   ...pageParams,
 });
 
-// ---------- profiles ----------
+// ---------- peoples ----------
 const dateField = z.preprocess(
   clean,
   z.string()
@@ -131,7 +131,7 @@ export const websiteField = z.preprocess(
   z.string().max(255).refine((u) => { try { const x = new URL(u); return ['http:', 'https:'].includes(x.protocol) && x.hostname.includes('.'); } catch { return false; } }, 'Enter a valid website address (http or https)').nullable().optional(),
 );
 
-export const profileShape = {
+export const peopleShape = {
   website: websiteField,
   name: z.string().trim().min(1, 'Name is required').max(255),
   nickname: optText(255),
@@ -168,10 +168,10 @@ export const profileShape = {
   siblingIds: idList,
 };
 
-export const profileCreateSchema = z.object(profileShape).strict();
-export const profileUpdateSchema = z.object(profileShape).partial().strict();
+export const peopleCreateSchema = z.object(peopleShape).strict();
+export const peopleUpdateSchema = z.object(peopleShape).partial().strict();
 
-export const profileListQuery = z.object({
+export const peopleListQuery = z.object({
   q: z.string().trim().max(100).optional(),
   gender: z.enum(['MALE', 'FEMALE']).optional(),
   maritalStatus: z.enum(['SINGLE', 'MARRIED', 'DIVORCED', 'WIDOWED']).optional(),
@@ -197,12 +197,12 @@ export const postSchema = z.object({
   status: z.enum(['published', 'draft', 'archived']).default('published'),
   tags: postTagsField,
 }).strict();
-export const postCreateSchema = postSchema.extend({ profileId: refIdOpt(), organizationId: refIdOpt() }).strict()
-  .refine((b) => (b.profileId == null) !== (b.organizationId == null), { message: 'Choose exactly one person or organization', path: ['profileId'] });
+export const postCreateSchema = postSchema.extend({ peopleId: refIdOpt(), organizationId: refIdOpt() }).strict()
+  .refine((b) => (b.peopleId == null) !== (b.organizationId == null), { message: 'Choose exactly one person or organization', path: ['peopleId'] });
 export const postListQuery = z.object({
   q: z.string().trim().max(100).optional(),
   tag: z.string().trim().toLowerCase().max(40).optional(),
-  profileId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
+  peopleId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
   organizationId: z.coerce.number().int().positive().max(2_147_483_647).optional(),
   mine: z.enum(['1', 'true']).optional(),
   ...pageParams,
@@ -220,7 +220,7 @@ export const contactShape = {
   name: z.string().trim().min(1, 'Name is required').max(120),
   number: z.string().trim().min(1, 'Number is required').max(64),
   connectionId: optId, // whose phonebook it came from
-  profileId: optId,    // who the number belongs to
+  peopleId: optId,    // who the number belongs to
 };
 export const contactCreateSchema = z.object(contactShape).strict();
 export const contactUpdateSchema = z.object(contactShape).partial().strict();
@@ -228,7 +228,7 @@ export const contactListQuery = z.object({
   q: z.string().trim().max(100).optional(),
   name: z.string().trim().max(100).optional(),
   number: z.string().trim().max(64).optional(),
-  relative: z.string().trim().max(12).optional(), // profile id | 'all' | 'none'
+  relative: z.string().trim().max(12).optional(), // people id | 'all' | 'none'
   sort: z.enum(['name', 'newest', 'number']).default('name'),
   ...pageParams,
 });
@@ -285,11 +285,11 @@ export const orgListQuery = z.object({
 });
 export const orgOptionsQuery = z.object({ q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(20).default(8) });
 
-// ---------- human <-> organization memberships, organization <-> organization links ----------
+// ---------- people <-> organization memberships, organization <-> organization links ----------
 const refId = z.number().int().positive().max(2_147_483_647);
 const linkExtras = { role: optText(120), startedOn: dateField, endedOn: dateField, note: optText(1000) };
 export const MEMBERSHIP_RELATIONS = ['MEMBER', 'AFFILIATED', 'CONNECTED'];
-export const membershipCreateSchema = z.object({ humanId: refId, organizationId: refId, relation: z.enum(MEMBERSHIP_RELATIONS).default('MEMBER'), ...linkExtras }).strict();
+export const membershipCreateSchema = z.object({ peopleId: refId, organizationId: refId, relation: z.enum(MEMBERSHIP_RELATIONS).default('MEMBER'), ...linkExtras }).strict();
 export const orgLinkCreateSchema = z.object({ fromId: refId, toId: refId, linkType: z.enum(['SUB_UNIT_OF', 'MEMBER_OF', 'AFFILIATED_WITH', 'CONNECTED_TO']), ...linkExtras }).strict();
 export const linkUpdateSchema = z.object(linkExtras).strict();
 export const structureQuery = z.object({ depth: z.coerce.number().int().min(1).max(6).default(3) });

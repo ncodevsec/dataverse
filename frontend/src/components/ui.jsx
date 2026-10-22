@@ -154,7 +154,7 @@ const BLUR_PX = { xs: 3, sm: 4, md: 5, lg: 8, xl: 12 };
 /** True when this photo must be blurred: the site setting is on and the person is female. */
 export function useBlur(gender) { return useSite().blurFemalePhotos && gender === 'FEMALE'; }
 
-/** A photo that is blurred automatically for protected profiles. Fills its parent; the parent decides the shape. */
+/** A photo that is blurred automatically for protected peoples. Fills its parent; the parent decides the shape. */
 export function PhotoImg({ src, alt, gender, blurPx = 10, className }) {
   const blurred = useBlur(gender);
   return <img src={src} alt={blurred ? '' : alt} loading="lazy" draggable={!blurred} className={cx('h-full w-full object-cover', blurred && 'scale-125 select-none', className)} style={blurred ? { filter: `blur(${blurPx}px)` } : undefined} />;

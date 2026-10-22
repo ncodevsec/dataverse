@@ -2,7 +2,7 @@ import { query, withTransaction } from '../db/pool.js';
 import { badRequest, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike } from '../utils/phone.js';
 import { SOCIAL_NETWORKS } from '../utils/schemas.js';
-import { sniffImageType } from './profileService.js';
+import { sniffImageType } from './peopleService.js';
 
 const isAdmin = (u) => u?.role === 'ADMIN';
 export const canEditOrg = (u, o) => !!u && (isAdmin(u) || o.created_by === u.id);

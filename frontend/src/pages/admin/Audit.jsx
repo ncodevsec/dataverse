@@ -20,7 +20,7 @@ export default function Audit() {
         <SearchInput className="min-w-[14rem] flex-1" value={text} onChange={setText} placeholder="Search by summary or person" />
         <SelectField aria-label="Action" value={action} onChange={(e) => setAction(e.target.value)}><option value="">All actions</option>{actions.data?.items.map((a) => <option key={a.action} value={a.action}>{a.action} ({a.count})</option>)}</SelectField>
       </div>
-      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock /> : data.items.length === 0 ? <EmptyState title="No activity recorded" icon="activity">Important changes such as user, role, profile and settings changes show up here.</EmptyState> : (
+      {error ? <ErrorState error={error} onRetry={reload} /> : loading && !data ? <LoadingBlock /> : data.items.length === 0 ? <EmptyState title="No activity recorded" icon="activity">Important changes such as user, role, people and settings changes show up here.</EmptyState> : (
         <>
           <Card className="divide-y divide-line">
             {data.items.map((a) => (

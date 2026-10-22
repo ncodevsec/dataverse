@@ -5,12 +5,12 @@ import { useFetch, useTitle } from '../../hooks/hooks.js';
 import { api } from '../../lib/api.js';
 import { bytes, fmtDateTime, timeAgo } from '../../lib/format.js';
 import Users from './Users.jsx';
-import { AdminProfiles, AdminContacts, AdminOrganizations } from './AdminData.jsx';
+import { AdminPeoples, AdminContacts, AdminOrganizations } from './AdminData.jsx';
 import Audit from './Audit.jsx';
 import SiteSettings from './SiteSettings.jsx';
 import Backup from './Backup.jsx';
 
-const LINKS = [['/admin', 'Overview', true], ['/admin/users', 'Users'], ['/admin/profiles', 'Profiles'], ['/admin/organizations', 'Organizations'], ['/admin/contacts', 'Caller ID'], ['/admin/audit', 'Audit log'], ['/admin/settings', 'Site settings'], ['/admin/backup', 'Backup']];
+const LINKS = [['/admin', 'Overview', true], ['/admin/users', 'Users'], ['/admin/peoples', 'Peoples'], ['/admin/organizations', 'Organizations'], ['/admin/contacts', 'Caller ID'], ['/admin/audit', 'Audit log'], ['/admin/settings', 'Site settings'], ['/admin/backup', 'Backup']];
 
 function Overview() {
   const stats = useFetch(() => api.get('/admin/stats'), []);
@@ -18,7 +18,7 @@ function Overview() {
   if (stats.error) return <ErrorState error={stats.error} onRetry={stats.reload} />;
   if (!stats.data) return <LoadingBlock rows={4} />;
   const { totals: t, daily, recentUsers, recentActivity } = stats.data;
-  const max = Math.max(1, ...daily.map((d) => d.users + d.profiles + d.contacts));
+  const max = Math.max(1, ...daily.map((d) => d.users + d.peoples + d.contacts));
   return (
     <div className="space-y-6">
       {t.pendingUsers > 0 && (
@@ -29,18 +29,18 @@ function Overview() {
       )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Users" value={t.users} hint={`${t.admins} admin${t.admins === 1 ? '' : 's'} · ${t.pendingUsers} pending · ${t.inactiveUsers} inactive`} to="/admin/users" />
-        <Stat label="Profiles" value={t.profiles.toLocaleString()} hint={`${t.organizations} organizations · ${t.profilesWithPhoto} with photo`} to="/admin/profiles" />
+        <Stat label="Peoples" value={t.peoples.toLocaleString()} hint={`${t.organizations} organizations · ${t.peoplesWithPhoto} with photo`} to="/admin/peoples" />
         <Stat label="Contacts" value={t.contacts.toLocaleString()} hint={`${t.uniqueNumbers.toLocaleString()} unique numbers`} to="/admin/contacts" />
         <Stat label="Audit events" value={t.auditEvents.toLocaleString()} hint={`${t.posts} notes`} to="/admin/audit" />
       </div>
 
       <Card className="p-5">
         <h2 className="text-base font-semibold">New records, last 14 days</h2>
-        <div className="mt-4 flex h-32 items-end gap-1.5" role="img" aria-label="Bar chart of new users, profiles and contacts per day">
+        <div className="mt-4 flex h-32 items-end gap-1.5" role="img" aria-label="Bar chart of new users, peoples and contacts per day">
           {daily.map((d) => {
-            const total = d.users + d.profiles + d.contacts;
+            const total = d.users + d.peoples + d.contacts;
             return (
-              <div key={d.day} className="flex flex-1 flex-col items-center gap-1" title={`${d.day}: ${d.users} users, ${d.profiles} profiles, ${d.contacts} contacts`}>
+              <div key={d.day} className="flex flex-1 flex-col items-center gap-1" title={`${d.day}: ${d.users} users, ${d.peoples} peoples, ${d.contacts} contacts`}>
                 <div className="flex w-full flex-1 items-end"><div className="w-full rounded-t bg-accent/80" style={{ height: `${Math.max(total ? 6 : 2, (total / max) * 100)}%`, opacity: total ? 1 : 0.25 }} /></div>
                 <span className="text-[10px] text-muted">{d.day.slice(8)}</span>
               </div>
@@ -90,7 +90,7 @@ export default function AdminShell() {
       <Routes>
         <Route index element={<Overview />} />
         <Route path="users" element={<Users />} />
-        <Route path="profiles" element={<AdminProfiles />} />
+        <Route path="peoples" element={<AdminPeoples />} />
         <Route path="organizations" element={<AdminOrganizations />} />
         <Route path="contacts" element={<AdminContacts />} />
         <Route path="audit" element={<Audit />} />

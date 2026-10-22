@@ -38,7 +38,7 @@ function TagList({ value, onChange }) {
   return <div className="-mt-1 flex flex-wrap gap-1.5">{value.map((t) => <TagChip key={t} tag={t} onRemove={() => onChange(value.filter((x) => x !== t))} />)}</div>;
 }
 
-const subjectPath = (sub) => (sub.kind === 'organization' ? `/organizations/${sub.id}` : `/profiles/${sub.id}`);
+const subjectPath = (sub) => (sub.kind === 'organization' ? `/organizations/${sub.id}` : `/peoples/${sub.id}`);
 
 export function PostCard({ post, showSubject = true, onEdit, onDelete }) {
   const [full, setFull] = useState(null);
@@ -75,23 +75,23 @@ export function PostEditor({ open, post, subject: fixed, onClose, onSaved }) {
   const blank = { title: '', content: '', status: 'published', tags: [] };
   const [form, setForm] = useState(blank);
   const [subject, setSubject] = useState(null);
-  const [kind, setKind] = useState('human');
+  const [kind, setKind] = useState('people');
   const [tab, setTab] = useState('write');
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!open) return;
     setForm(post ? { title: post.title, content: post.content, status: post.status, tags: post.tags } : blank);
-    setSubject(fixed?.id ?? post?.subject?.id ?? null); setKind(fixed?.kind ?? post?.subject?.kind ?? 'human'); setTab('write'); setErrors({});
+    setSubject(fixed?.id ?? post?.subject?.id ?? null); setKind(fixed?.kind ?? post?.subject?.kind ?? 'people'); setTab('write'); setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, post, fixed?.id, fixed?.kind]);
 
   async function save(e) {
     e?.preventDefault();
-    if (!post && !subject) { setErrors({ profileId: 'Choose who or what this post is about' }); return; }
+    if (!post && !subject) { setErrors({ peopleId: 'Choose who or what this post is about' }); return; }
     setBusy(true); setErrors({});
     try {
-      if (post) await api.patch(`/posts/${post.id}`, form); else await api.post('/posts', { ...form, ...(kind === 'organization' ? { organizationId: subject } : { profileId: subject }) });
+      if (post) await api.patch(`/posts/${post.id}`, form); else await api.post('/posts', { ...form, ...(kind === 'organization' ? { organizationId: subject } : { peopleId: subject }) });
       toast.success(post ? 'Post updated' : 'Post published'); onSaved?.(); onClose();
     } catch (err) { setErrors(apiErrors(err)); toast.error(err.message); } finally { setBusy(false); }
   }
@@ -101,8 +101,8 @@ export function PostEditor({ open, post, subject: fixed, onClose, onSaved }) {
       <form onSubmit={save} className="space-y-4" noValidate>
         {!post && !fixed && (
           <div className="grid gap-4 sm:grid-cols-[10rem_1fr]">
-            <SelectField label="About a" value={kind} onChange={(e) => { setKind(e.target.value); setSubject(null); }}><option value="human">Person</option><option value="organization">Organization</option></SelectField>
-            <ProfilePicker key={kind} kind={kind} label={kind === 'organization' ? 'Which organization?' : 'Who?'} value={subject} onChange={setSubject} error={errors.profileId || errors.organizationId} />
+            <SelectField label="About a" value={kind} onChange={(e) => { setKind(e.target.value); setSubject(null); }}><option value="people">Person</option><option value="organization">Organization</option></SelectField>
+            <ProfilePicker key={kind} kind={kind} label={kind === 'organization' ? 'Which organization?' : 'Who?'} value={subject} onChange={setSubject} error={errors.peopleId || errors.organizationId} />
           </div>
         )}
         <TextField label="Title" required value={form.title} error={errors.title} maxLength={200} onChange={(e) => setForm({ ...form, title: e.target.value })} />
@@ -146,7 +146,7 @@ export function usePostDialogs({ reload, subject }) {
 
 /** The posts about one person or organization, with add / edit / delete. */
 export function SubjectPosts({ subject }) {
-  const path = subject.kind === 'organization' ? `/organizations/${subject.id}/posts` : `/profiles/${subject.id}/posts`;
+  const path = subject.kind === 'organization' ? `/organizations/${subject.id}/posts` : `/peoples/${subject.id}/posts`;
   const { data, error, loading, reload } = useFetch(() => api.get(path), [path]);
   const { openNew, openEdit, askDelete, dialogs } = usePostDialogs({ reload, subject });
   const items = data?.items || [];

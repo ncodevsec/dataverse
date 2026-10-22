@@ -24,37 +24,37 @@ const DetailsFields = ({ form, setForm, errors }) => (
 const toForm = (l) => ({ role: l?.role || '', startedOn: l?.startedOn || '', endedOn: l?.endedOn || '', note: l?.note || '' });
 const extras = (f) => ({ role: f.role || null, startedOn: f.startedOn || null, endedOn: f.endedOn || null, note: f.note || null });
 
-/** Add / edit a person <-> organization connection. `human` or `organization` is the fixed side; the other is picked. */
-function MembershipModal({ human, organization, membership, onClose, onSaved }) {
+/** Add / edit a person <-> organization connection. `people` or `organization` is the fixed side; the other is picked. */
+function MembershipModal({ people, organization, membership, onClose, onSaved }) {
   const toast = useToast();
-  const fixedIsHuman = !!human;
+  const fixedIsPeople = !!people;
   const [relation, setRelation] = useState(membership?.relation || 'MEMBER');
   const [target, setTarget] = useState(null);
   const [form, setForm] = useState(toForm(membership));
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
-  const subject = human?.name || organization?.name;
+  const subject = people?.name || organization?.name;
   const rel = MEMBERSHIP_RELATIONS.find((r) => r.id === relation);
   async function save(e) {
     e?.preventDefault();
-    if (!membership && !target) { setErrors({ target: fixedIsHuman ? 'Choose an organization' : 'Choose a person' }); return; }
+    if (!membership && !target) { setErrors({ target: fixedIsPeople ? 'Choose an organization' : 'Choose a person' }); return; }
     setBusy(true); setErrors({});
     try {
       if (membership) await api.patch(`/memberships/${membership.id}`, extras(form));
-      else await api.post('/memberships', { humanId: human?.id ?? target.id, organizationId: organization?.id ?? target.id, relation, ...extras(form) });
+      else await api.post('/memberships', { peopleId: people?.id ?? target.id, organizationId: organization?.id ?? target.id, relation, ...extras(form) });
       toast.success(membership ? 'Connection updated' : 'Connection added'); onSaved(); onClose();
-    } catch (err) { const d = apiErrors(err); setErrors({ ...d, target: d.target || d.humanId || d.organizationId }); toast.error(err.message); } finally { setBusy(false); }
+    } catch (err) { const d = apiErrors(err); setErrors({ ...d, target: d.target || d.peopleId || d.organizationId }); toast.error(err.message); } finally { setBusy(false); }
   }
   return (
-    <Modal open onClose={onClose} title={membership ? 'Edit connection' : fixedIsHuman ? 'Add an organization' : 'Add a person'}
+    <Modal open onClose={onClose} title={membership ? 'Edit connection' : fixedIsPeople ? 'Add an organization' : 'Add a person'}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={save}>{membership ? 'Save' : 'Add'}</Button></>}>
       <form onSubmit={save} className="space-y-4" noValidate>
-        {membership ? <p className="text-sm"><b>{subject}</b> {rel?.[fixedIsHuman ? 'human' : 'org']} <b>{membership.organization?.name || membership.human?.name}</b></p> : (
+        {membership ? <p className="text-sm"><b>{subject}</b> {rel?.[fixedIsPeople ? 'people' : 'org']} <b>{membership.organization?.name || membership.people?.name}</b></p> : (
           <>
             <SelectField label="Relationship" value={relation} onChange={(e) => setRelation(e.target.value)}>
-              {MEMBERSHIP_RELATIONS.map((r) => <option key={r.id} value={r.id}>{subject} {r[fixedIsHuman ? 'human' : 'org']} …</option>)}
+              {MEMBERSHIP_RELATIONS.map((r) => <option key={r.id} value={r.id}>{subject} {r[fixedIsPeople ? 'people' : 'org']} …</option>)}
             </SelectField>
-            <ProfilePicker kind={fixedIsHuman ? 'organization' : 'human'} label={fixedIsHuman ? 'Organization' : 'Person'} value={target?.id ?? null} onChange={() => {}} onSelect={setTarget} error={errors.target}
+            <ProfilePicker kind={fixedIsPeople ? 'organization' : 'people'} label={fixedIsPeople ? 'Organization' : 'Person'} value={target?.id ?? null} onChange={() => {}} onSelect={setTarget} error={errors.target}
               hint="Search by name or ID. This is separate from family relationships." />
           </>
         )}
@@ -66,9 +66,9 @@ function MembershipModal({ human, organization, membership, onClose, onSaved }) 
 }
 
 /** Person page: organizations the person belongs to, is affiliated with or connected to. */
-export function MembershipsCard({ profile }) {
+export function MembershipsCard({ people }) {
   const toast = useToast();
-  const { data, error, loading, reload } = useFetch(() => api.get(`/profiles/${profile.id}/memberships`), [profile.id]);
+  const { data, error, loading, reload } = useFetch(() => api.get(`/peoples/${people.id}/memberships`), [people.id]);
   const [modal, setModal] = useState(undefined); // undefined closed | null new | membership
   const [del, setDel] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -107,8 +107,8 @@ export function MembershipsCard({ profile }) {
           ))}
         </div>
       )}
-      {modal !== undefined && <MembershipModal key={modal?.id ?? 'new'} human={profile} membership={modal || undefined} onClose={() => setModal(undefined)} onSaved={reload} />}
-      <ConfirmDialog open={!!del} danger title="Remove this connection?" message={del ? `${profile.name} and ${del.organization.name} will no longer be connected. Neither is deleted.` : ''} confirmLabel="Remove" loading={busy} onConfirm={remove} onClose={() => setDel(null)} />
+      {modal !== undefined && <MembershipModal key={modal?.id ?? 'new'} people={people} membership={modal || undefined} onClose={() => setModal(undefined)} onSaved={reload} />}
+      <ConfirmDialog open={!!del} danger title="Remove this connection?" message={del ? `${people.name} and ${del.organization.name} will no longer be connected. Neither is deleted.` : ''} confirmLabel="Remove" loading={busy} onConfirm={remove} onClose={() => setDel(null)} />
     </Card>
   );
 }
@@ -235,12 +235,12 @@ export function OrgConnectionsCard({ organization }) {
             <ul className="grid gap-2 sm:grid-cols-2">
               {members.items.map((m) => (
                 <li key={m.id} className="flex items-center gap-2 rounded-xl border border-line p-2.5">
-                  <Link to={`/profiles/${m.human.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                    <Avatar src={m.human.photoUrl} name={m.human.name} size="sm" gender={m.human.gender} />
-                    <span className="min-w-0"><span className="block truncate text-sm font-medium">{m.human.name}</span>
+                  <Link to={`/peoples/${m.people.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                    <Avatar src={m.people.photoUrl} name={m.people.name} size="sm" gender={m.people.gender} />
+                    <span className="min-w-0"><span className="block truncate text-sm font-medium">{m.people.name}</span>
                       <span className="block truncate text-xs text-muted">{[MEMBERSHIP_RELATIONS.find((r) => r.id === m.relation)?.id !== 'MEMBER' && m.relation.toLowerCase(), m.role, span(m)].filter(Boolean).join(' · ') || 'Member'}</span></span>
                   </Link>
-                  {m.canManage && <div className="flex shrink-0"><IconButton icon="edit" label={`Edit ${m.human.name}`} onClick={() => setMemModal({ ...m, organization })} /><IconButton icon="trash" label={`Remove ${m.human.name}`} onClick={() => setDel({ kind: 'member', item: m })} /></div>}
+                  {m.canManage && <div className="flex shrink-0"><IconButton icon="edit" label={`Edit ${m.people.name}`} onClick={() => setMemModal({ ...m, organization })} /><IconButton icon="trash" label={`Remove ${m.people.name}`} onClick={() => setDel({ kind: 'member', item: m })} /></div>}
                 </li>
               ))}
             </ul>

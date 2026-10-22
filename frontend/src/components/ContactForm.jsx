@@ -7,13 +7,13 @@ import { api } from '../lib/api.js';
 /** Add / edit a contact. Pass `contact` to edit. */
 export default function ContactForm({ open, contact, onClose, onSaved, defaultConnection }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: '', number: '', connectionId: null, profileId: null });
+  const [form, setForm] = useState({ name: '', number: '', connectionId: null, peopleId: null });
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(contact ? { name: contact.name, number: contact.number, connectionId: contact.connectionId, profileId: contact.profileId } : { name: '', number: '', connectionId: defaultConnection ?? null, profileId: null });
+      setForm(contact ? { name: contact.name, number: contact.number, connectionId: contact.connectionId, peopleId: contact.peopleId } : { name: '', number: '', connectionId: defaultConnection ?? null, peopleId: null });
       setErrors({});
     }
   }, [open, contact, defaultConnection]);
@@ -35,7 +35,7 @@ export default function ContactForm({ open, contact, onClose, onSaved, defaultCo
         <TextField label="Name" required value={form.name} error={errors.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <TextField label="Phone number" required type="tel" value={form.number} error={errors.number} onChange={(e) => setForm({ ...form, number: e.target.value })} hint="Bangladeshi numbers like 01712345678 are saved as +8801712345678" />
         <ProfilePicker label="Saved by (whose phonebook)" value={form.connectionId} onChange={(v) => setForm({ ...form, connectionId: v })} initialLabel={contact?.relativeName || undefined} error={errors.connectionId} />
-        <ProfilePicker label="This number belongs to (optional)" value={form.profileId} onChange={(v) => setForm({ ...form, profileId: v })} initialLabel={contact?.profileName || undefined} error={errors.profileId} hint="Left empty, we link it automatically when the number matches a profile's phone." />
+        <ProfilePicker label="This number belongs to (optional)" value={form.peopleId} onChange={(v) => setForm({ ...form, peopleId: v })} initialLabel={contact?.peopleName || undefined} error={errors.peopleId} hint="Left empty, we link it automatically when the number matches a people's phone." />
         <button type="submit" className="sr-only">Save</button>
       </form>
     </Modal>

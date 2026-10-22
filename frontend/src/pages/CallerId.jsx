@@ -18,8 +18,8 @@ export function ContactRow({ c, onEdit, onDelete }) {
         <p className="truncate font-medium">{c.name}</p>
         <a href={`tel:${c.number.replace(/[^\d+*#]/g, '')}`} className="text-sm text-accent hover:underline">{c.number}</a>
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-          {c.relativeName && <span>Saved by <Link to={`/profiles/${c.connectionId}`} className="text-ink hover:text-accent">{c.relativeName}</Link></span>}
-          {c.profileId && <Link to={`/profiles/${c.profileId}`}><Badge tone="accent">Profile: {c.profileName}</Badge></Link>}
+          {c.relativeName && <span>Saved by <Link to={`/peoples/${c.connectionId}`} className="text-ink hover:text-accent">{c.relativeName}</Link></span>}
+          {c.peopleId && <Link to={`/peoples/${c.peopleId}`}><Badge tone="accent">People: {c.peopleName}</Badge></Link>}
           {c.organizationId && <Link to={`/organizations/${c.organizationId}`}><Badge tone="accent">Organization: {c.organizationName}</Badge></Link>}
         </div>
       </div>
@@ -48,7 +48,7 @@ function ImportModal({ open, onClose, onDone }) {
     <Modal open={open} onClose={onClose} title="Import a vCard (.vcf) file"
       footer={result ? <Button variant="primary" onClick={onClose}>Done</Button> : <><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={!file} loading={busy} onClick={run}>Import</Button></>}>
       {result ? (
-        <div className="space-y-1 text-sm"><p><b>{result.inserted}</b> contacts added.</p><p className="text-muted">{result.duplicatesSkipped} duplicates skipped · {result.linked} linked to profiles by phone number.</p></div>
+        <div className="space-y-1 text-sm"><p><b>{result.inserted}</b> contacts added.</p><p className="text-muted">{result.duplicatesSkipped} duplicates skipped · {result.linked} linked to peoples by phone number.</p></div>
       ) : (
         <div className="space-y-4">
           <p className="text-sm text-muted">Export your phone's contacts as a .vcf file and choose it here. Duplicates (same name and number in the same phonebook) are skipped.</p>

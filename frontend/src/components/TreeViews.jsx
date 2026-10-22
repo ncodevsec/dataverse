@@ -6,12 +6,12 @@ import { Avatar, cx } from './ui.jsx';
 const birthYear = (p) => (p?.dob ? p.dob.slice(0, 4) : null);
 const life = (p) => (p?.dob || p?.dateOfDeath ? `${birthYear(p) ? `b. ${birthYear(p)}` : ''}${p.dateOfDeath ? `${birthYear(p) ? ' – ' : ''}d. ${p.dateOfDeath.slice(0, 4)}` : ''}` : null);
 
-/** One person: the name opens their profile, the small tree icon re-centres Shekor on them. */
+/** One person: the name opens their people, the small tree icon re-centres Shekor on them. */
 export function Person({ p, role, focus, className }) {
   if (!p) return null;
   return (
     <div className={cx('flex w-full min-w-0 items-center gap-2.5 rounded-xl border bg-surface p-2', focus ? 'border-accent ring-2 ring-accent/25' : 'border-line', className)}>
-      <Link to={`/profiles/${p.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg hover:text-accent" title={`Open ${p.name}'s profile`}>
+      <Link to={`/peoples/${p.id}`} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg hover:text-accent" title={`Open ${p.name}'s people`}>
         <Avatar src={p.photoUrl} name={p.name} size="sm" gender={p.gender} />
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium leading-tight">{p.name}</span>

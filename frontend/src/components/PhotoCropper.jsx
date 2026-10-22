@@ -41,7 +41,7 @@ export default function PhotoCropper({ file, onCancel, onDone }) {
         <label className="text-sm"><span className="mb-1 block font-medium">Rotate</span>
           <input type="range" min="-180" max="180" step="1" value={rotation} onChange={(e) => setRotation(Number(e.target.value))} className="w-full accent-[var(--accent)]" aria-label="Rotate" /></label>
       </div>
-      <p className="mt-3 text-xs text-muted">Drag to move, pinch or use the sliders to zoom. When you save the profile, the photo is compressed so it loads fast.</p>
+      <p className="mt-3 text-xs text-muted">Drag to move, pinch or use the sliders to zoom. When you save the people, the photo is compressed so it loads fast.</p>
     </Modal>
   );
 }

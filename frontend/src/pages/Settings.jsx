@@ -23,7 +23,7 @@ function Account() {
       <TextField label="Email" type="email" value={form.email} error={errors.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
       <div className="rounded-xl border border-line p-3 text-sm">
         <p className="font-medium">Role</p><p className="text-muted">{user.role === 'ADMIN' ? 'Administrator' : 'Member'}. Only an administrator can change this.</p>
-        {user.profileId && <p className="mt-2"><Link className="text-accent hover:underline" to={`/profiles/${user.profileId}`}>View my linked profile</Link></p>}
+        {user.peopleId && <p className="mt-2"><Link className="text-accent hover:underline" to={`/peoples/${user.peopleId}`}>View my linked people</Link></p>}
       </div>
       <Button type="submit" variant="primary" loading={busy}>Save changes</Button>
     </form>

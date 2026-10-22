@@ -27,7 +27,7 @@ export function Register() {
       <AuthShell title="Waiting for approval" subtitle="Your account was created." footer={<Link to="/login" className="font-medium text-accent hover:underline">Back to sign in</Link>}>
         <div role="status" className="rounded-xl border border-line bg-surface p-4 text-sm">
           <p className="font-medium">An administrator needs to approve your account before you can sign in.</p>
-          <p className="mt-2 text-muted">Until then no profile or contact data is visible to you. Try signing in again later, or contact the person who invited you.</p>
+          <p className="mt-2 text-muted">Until then no people or contact data is visible to you. Try signing in again later, or contact the person who invited you.</p>
         </div>
       </AuthShell>
     );
@@ -36,7 +36,7 @@ export function Register() {
     return <AuthShell title="Registration is closed" subtitle="New accounts are currently created by an administrator." footer={<Link to="/login" className="font-medium text-accent hover:underline">Back to sign in</Link>} />;
   }
   return (
-    <AuthShell title="Create your account" subtitle="Browse profiles, family trees and the contact directory."
+    <AuthShell title="Create your account" subtitle="Browse peoples, family trees and the contact directory."
       footer={<>Already registered? <Link to="/login" className="font-medium text-accent hover:underline">Sign in</Link></>}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         {error && !Object.keys(errors).length && <div role="alert" className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm">{error}</div>}

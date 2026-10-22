@@ -3,11 +3,11 @@ import { badRequest, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike, formatPhone } from '../utils/phone.js';
 import { parseVcf } from '../utils/vcf.js';
 
-const SELECT = `SELECT c.id, c.name, c.number, c.connection_id, c.profile_id, c.organization_id, c.created_by, c.created_at,
-       rel.name AS relative_name, prof.name AS profile_name, prof.photo_updated_at AS profile_photo, org.name AS organization_name
+const SELECT = `SELECT c.id, c.name, c.number, c.connection_id, c.people_id, c.organization_id, c.created_by, c.created_at,
+       rel.name AS relative_name, prof.name AS people_name, prof.photo_updated_at AS people_photo, org.name AS organization_name
   FROM caller_contacts c
-  LEFT JOIN profiles rel  ON rel.id  = c.connection_id
-  LEFT JOIN profiles prof ON prof.id = c.profile_id
+  LEFT JOIN peoples rel  ON rel.id  = c.connection_id
+  LEFT JOIN peoples prof ON prof.id = c.people_id
   LEFT JOIN organizations org ON org.id = c.organization_id`;
 
 export const toContact = (r, viewer) => ({
@@ -16,8 +16,8 @@ export const toContact = (r, viewer) => ({
   number: r.number,
   connectionId: r.connection_id,
   relativeName: r.relative_name,
-  profileId: r.profile_id,
-  profileName: r.profile_name,
+  peopleId: r.people_id,
+  peopleName: r.people_name,
   organizationId: r.organization_id,
   organizationName: r.organization_name,
   createdAt: r.created_at,
@@ -61,11 +61,11 @@ export async function searchContacts(f, viewer) {
   return { items: rows.map((r) => toContact(r, viewer)), total: rows[0]?.total ?? 0 };
 }
 
-/** Profiles that own at least one phonebook, for the "Saved by" filter. */
+/** Peoples that own at least one phonebook, for the "Saved by" filter. */
 export async function listRelatives() {
   const { rows } = await query(
     `SELECT p.id, p.name, count(*)::int AS contacts
-       FROM caller_contacts c JOIN profiles p ON p.id = c.connection_id
+       FROM caller_contacts c JOIN peoples p ON p.id = c.connection_id
       GROUP BY p.id, p.name ORDER BY lower(p.name)`);
   return rows;
 }
@@ -80,41 +80,41 @@ export async function getContactRow(id) {
   return rows[0] || null;
 }
 
-async function profileExists(id) {
+async function peopleExists(id) {
   if (id == null) return;
-  const { rows } = await query('SELECT 1 FROM profiles WHERE id = $1', [id]);
-  if (!rows.length) throw badRequest(`Profile ${id} does not exist`);
+  const { rows } = await query('SELECT 1 FROM peoples WHERE id = $1', [id]);
+  if (!rows.length) throw badRequest(`People ${id} does not exist`);
 }
 
-/** When a number matches exactly one profile's phone (comparing the last 10 digits), link to it automatically. */
-async function guessProfileId(number) {
+/** When a number matches exactly one people's phone (comparing the last 10 digits), link to it automatically. */
+async function guessPeopleId(number) {
   const d = digitsOnly(number);
   if (d.length < 10) return null;
   const { rows } = await query(
-    `SELECT id FROM profiles WHERE length(phone_digits) >= 10 AND right(phone_digits, 10) = right($1, 10) LIMIT 2`, [d]);
+    `SELECT id FROM peoples WHERE length(phone_digits) >= 10 AND right(phone_digits, 10) = right($1, 10) LIMIT 2`, [d]);
   return rows.length === 1 ? rows[0].id : null;
 }
 
 export async function createContact(data, userId) {
-  await Promise.all([profileExists(data.connectionId), profileExists(data.profileId)]);
+  await Promise.all([peopleExists(data.connectionId), peopleExists(data.peopleId)]);
   const number = formatPhone(data.number);
-  const profileId = data.profileId ?? (await guessProfileId(number));
+  const peopleId = data.peopleId ?? (await guessPeopleId(number));
   const { rows } = await query(
-    `INSERT INTO caller_contacts (name, number, connection_id, profile_id, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-    [data.name.trim(), number, data.connectionId ?? null, profileId, userId]);
+    `INSERT INTO caller_contacts (name, number, connection_id, people_id, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    [data.name.trim(), number, data.connectionId ?? null, peopleId, userId]);
   return rows[0].id;
 }
 
 export async function updateContact(id, data) {
-  if (data.connectionId !== undefined) await profileExists(data.connectionId);
-  if (data.profileId !== undefined) await profileExists(data.profileId);
+  if (data.connectionId !== undefined) await peopleExists(data.connectionId);
+  if (data.peopleId !== undefined) await peopleExists(data.peopleId);
   const sets = [];
   const vals = [id];
   const add = (col, v) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
   if (data.name !== undefined) add('name', data.name.trim());
   if (data.number !== undefined) add('number', formatPhone(data.number));
   if (data.connectionId !== undefined) add('connection_id', data.connectionId);
-  if (data.profileId !== undefined) add('profile_id', data.profileId);
+  if (data.peopleId !== undefined) add('people_id', data.peopleId);
   if (!sets.length) return;
   const { rowCount } = await query(`UPDATE caller_contacts SET ${sets.join(', ')} WHERE id = $1`, vals);
   if (!rowCount) throw notFound('Contact not found');
@@ -125,19 +125,19 @@ export async function deleteContact(id) {
   if (!rowCount) throw notFound('Contact not found');
 }
 
-/** Links contacts of one phonebook (or all) to profiles whose phone number matches uniquely. */
+/** Links contacts of one phonebook (or all) to peoples whose phone number matches uniquely. */
 export async function autolink(client, connectionId = null) {
   const { rowCount } = await client.query(
-    `UPDATE caller_contacts c SET profile_id = m.id
+    `UPDATE caller_contacts c SET people_id = m.id
        FROM (SELECT right(phone_digits, 10) AS k, min(id) AS id, count(*) AS n
-               FROM profiles WHERE length(phone_digits) >= 10 GROUP BY 1) m
-      WHERE c.profile_id IS NULL AND length(c.number_digits) >= 10 AND right(c.number_digits, 10) = m.k AND m.n = 1
+               FROM peoples WHERE length(phone_digits) >= 10 GROUP BY 1) m
+      WHERE c.people_id IS NULL AND length(c.number_digits) >= 10 AND right(c.number_digits, 10) = m.k AND m.n = 1
         AND ($1::int IS NULL OR c.connection_id = $1)`, [connectionId]);
   return rowCount;
 }
 
 export async function importVcf({ connectionId, vcf }, userId) {
-  await profileExists(connectionId);
+  await peopleExists(connectionId);
   const parsed = parseVcf(vcf);
   if (!parsed.length) throw badRequest('No contacts with phone numbers were found in that file');
   return withTransaction(async (client) => {

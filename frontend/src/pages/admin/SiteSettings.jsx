@@ -33,11 +33,11 @@ export default function SiteSettings() {
       <Card className="space-y-4 p-5">
         <h2 className="text-base font-semibold">Access</h2>
         <Checkbox label="Allow new registrations" hint="When off, only administrators can create accounts." checked={form.registration_enabled} onChange={(e) => set('registration_enabled', e.target.checked)} />
-        <Checkbox label="Let members add profiles and contacts" hint="Members can always edit what they created. Turn off to make the directory admin-managed." checked={form.allow_user_contributions} onChange={(e) => set('allow_user_contributions', e.target.checked)} />
+        <Checkbox label="Let members add peoples and contacts" hint="Members can always edit what they created. Turn off to make the directory admin-managed." checked={form.allow_user_contributions} onChange={(e) => set('allow_user_contributions', e.target.checked)} />
       </Card>
       <Card className="space-y-4 p-5">
         <h2 className="text-base font-semibold">Privacy</h2>
-        <Checkbox label="Blur female profile photos" hint="When on, every female profile photo on the site is blurred. A member can view the original only by opening that person's profile, clicking the photo and confirming. This hides photos in the interface; it is not a substitute for access control." checked={!!form.blur_female_photos} onChange={(e) => set('blur_female_photos', e.target.checked)} />
+        <Checkbox label="Blur female people photos" hint="When on, every female people photo on the site is blurred. A member can view the original only by opening that person's people, clicking the photo and confirming. This hides photos in the interface; it is not a substitute for access control." checked={!!form.blur_female_photos} onChange={(e) => set('blur_female_photos', e.target.checked)} />
       </Card>
       <Card className="space-y-4 p-5">
         <h2 className="text-base font-semibold">Defaults</h2>

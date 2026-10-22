@@ -39,13 +39,13 @@ const END_REASONS = [['', 'Still married'], ['DIVORCED', 'Divorced'], ['WIDOWED'
 function SpousesEditor({ value, onChange, selfId, error }) {
   const patch = (i, p) => onChange(value.map((x, j) => (j === i ? { ...x, ...p } : x)));
   return (
-    <Field label="Spouses" hint="Add every spouse. Leave 'Still married' for the current one; each marriage is shown separately on the profile." error={error} className="sm:col-span-2">
+    <Field label="Spouses" hint="Add every spouse. Leave 'Still married' for the current one; each marriage is shown separately on the people." error={error} className="sm:col-span-2">
       {value.length > 0 && (
         <ul className="mb-3 space-y-2">
           {value.map((x, i) => (
             <li key={x.personId} className="rounded-xl border border-line p-3">
               <div className="flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-sm font-medium">{x.name || `Profile #${x.personId}`} <span className="font-normal text-muted">#{x.personId}</span></p>
+                <p className="min-w-0 truncate text-sm font-medium">{x.name || `People #${x.personId}`} <span className="font-normal text-muted">#{x.personId}</span></p>
                 <IconButton icon="x" label={`Remove spouse ${x.name || x.personId}`} className="h-7 w-7" onClick={() => onChange(value.filter((_, j) => j !== i))} />
               </div>
               <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -71,8 +71,8 @@ function RelativesPicker({ label, ids, names, onAdd, onRemove, selfId, hint, err
         <ul className="mb-2 flex flex-wrap gap-2">
           {ids.map((rid) => (
             <li key={rid} className="inline-flex items-center gap-1 rounded-full border border-line bg-surface py-1 pl-3 pr-1 text-sm">
-              <span>{names[rid] || `Profile #${rid}`} <span className="text-muted">#{rid}</span></span>
-              <IconButton icon="x" label={`Remove ${names[rid] || `profile ${rid}`}`} className="h-6 w-6" onClick={() => onRemove(rid)} />
+              <span>{names[rid] || `People #${rid}`} <span className="text-muted">#{rid}</span></span>
+              <IconButton icon="x" label={`Remove ${names[rid] || `people ${rid}`}`} className="h-6 w-6" onClick={() => onRemove(rid)} />
             </li>
           ))}
         </ul>
@@ -82,16 +82,16 @@ function RelativesPicker({ label, ids, names, onAdd, onRemove, selfId, hint, err
   );
 }
 
-export default function ProfileForm() {
+export default function PeopleForm() {
   const { id } = useParams();
   const editing = !!id;
   const navigate = useNavigate();
   const toast = useToast();
   const { isAdmin } = useAuth();
   const [sp] = useSearchParams();
-  useTitle(editing ? 'Edit profile' : 'New profile', useSite().siteName);
+  useTitle(editing ? 'Edit people' : 'New people', useSite().siteName);
 
-  const existing = useFetch(() => (editing ? api.get(`/profiles/${id}`) : Promise.resolve(null)), [id]);
+  const existing = useFetch(() => (editing ? api.get(`/peoples/${id}`) : Promise.resolve(null)), [id]);
   const [form, setForm] = useState(EMPTY);
   const [labels, setLabels] = useState({});
   const [errors, setErrors] = useState({});
@@ -108,7 +108,7 @@ export default function ProfileForm() {
   useEffect(() => {
     if (editing && existing.data) {
       const fam = existing.data.family;
-      const f0 = toForm(existing.data.profile, fam);
+      const f0 = toForm(existing.data.people, fam);
       setForm(f0);
       initialRels.current = { childIds: f0.childIds, siblingIds: f0.siblingIds, spouses: JSON.stringify(f0.spouses) };
       setNames(Object.fromEntries([...fam.children, ...fam.siblings].map((c) => [c.id, c.name])));
@@ -122,8 +122,8 @@ export default function ProfileForm() {
     for (const k of ['fatherId', 'motherId']) if (sp.get(k)) init[k] = Number(sp.get(k));
     setForm(init);
     const ids = ['fatherId', 'motherId'].map((k) => sp.get(k)).filter(Boolean);
-    ids.forEach((pid) => api.get(`/profiles/${pid}`).then((d) => setLabels((l) => ({ ...l, [sp.get('fatherId') === pid ? 'fatherId' : 'motherId']: d.profile.name }))).catch(() => {}));
-    if (sp.get('copyFrom')) api.get(`/profiles/${sp.get('copyFrom')}`).then((d) => setForm((f) => ({ ...f, ...Object.fromEntries(ADDRESS_FIELDS.map((k) => [k, d.profile[k] ?? ''])) }))).catch(() => {});
+    ids.forEach((pid) => api.get(`/peoples/${pid}`).then((d) => setLabels((l) => ({ ...l, [sp.get('fatherId') === pid ? 'fatherId' : 'motherId']: d.people.name }))).catch(() => {}));
+    if (sp.get('copyFrom')) api.get(`/peoples/${sp.get('copyFrom')}`).then((d) => setForm((f) => ({ ...f, ...Object.fromEntries(ADDRESS_FIELDS.map((k) => [k, d.people[k] ?? ''])) }))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
@@ -146,22 +146,22 @@ export default function ProfileForm() {
     e.preventDefault();
     setBusy(true); setErrors({});
     const payload = { ...form };
-    if (editing && existing.data?.profile.nidHidden) delete payload.nid; // never overwrite a value we were not allowed to see
+    if (editing && existing.data?.people.nidHidden) delete payload.nid; // never overwrite a value we were not allowed to see
     payload.tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
     if (!payload.dob) payload.dob = null;
     if (!payload.dateOfDeath) payload.dateOfDeath = null;
     payload.socialLinks = Object.fromEntries(NETWORKS.map(([k]) => [k, (form.socialLinks[k] || []).map((v) => v.trim()).filter(Boolean)]));
-    // only send relatives when they were changed, so unrelated edits never touch other people's profiles
+    // only send relatives when they were changed, so unrelated edits never touch other people's peoples
     for (const k of ['childIds', 'siblingIds']) if (sameIds(form[k], initialRels.current[k])) delete payload[k];
     if (JSON.stringify(form.spouses) === initialRels.current.spouses) delete payload.spouses;
     else payload.spouses = form.spouses.map((x) => ({ personId: x.personId, marriedOn: x.marriedOn || null, endedOn: x.endedOn || null, endReason: x.endReason || null }));
     try {
-      const res = editing ? await api.patch(`/profiles/${id}`, payload) : await api.post('/profiles', payload);
-      const pid = res.profile.id;
-      if (photoFile) await api.upload(`/profiles/${pid}/photo`, await compressImage(photoFile)); // compress right before upload
-      else if (removePhoto && editing) await api.del(`/profiles/${pid}/photo`);
-      toast.success(editing ? 'Profile updated' : 'Profile created');
-      navigate(`/profiles/${pid}`);
+      const res = editing ? await api.patch(`/peoples/${id}`, payload) : await api.post('/peoples', payload);
+      const pid = res.people.id;
+      if (photoFile) await api.upload(`/peoples/${pid}/photo`, await compressImage(photoFile)); // compress right before upload
+      else if (removePhoto && editing) await api.del(`/peoples/${pid}/photo`);
+      toast.success(editing ? 'People updated' : 'People created');
+      navigate(`/peoples/${pid}`);
     } catch (err) {
       setErrors(apiErrors(err));
       toast.error(err.message);
@@ -171,16 +171,16 @@ export default function ProfileForm() {
 
   if (editing && existing.error) return <ErrorState error={existing.error} onRetry={existing.reload} />;
   if (editing && existing.loading && !existing.data) return <LoadingBlock rows={5} />;
-  if (editing && existing.data && !existing.data.profile.permissions.canEdit) return <ErrorState error={{ message: 'You can only edit profiles you created or that are linked to your account.' }} />;
+  if (editing && existing.data && !existing.data.people.permissions.canEdit) return <ErrorState error={{ message: 'You can only edit peoples you created or that are linked to your account.' }} />;
 
-  const currentPhoto = photoPreview || (!removePhoto && editing ? existing.data?.profile.photoUrl : null);
+  const currentPhoto = photoPreview || (!removePhoto && editing ? existing.data?.people.photoUrl : null);
   const field = (k, label, extra = {}) => <TextField label={label} value={form[k]} onChange={set(k)} error={errors[k]} {...extra} />;
 
   return (
     <form onSubmit={submit} noValidate className="space-y-5">
-      <PageHeader title={editing ? `Edit ${existing.data?.profile.name}` : 'New profile'} subtitle="Only the name is required. Everything else can be added later."
-        back={<Link to={editing ? `/profiles/${id}` : '/profiles'} className="mb-1 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><Icon name="left" className="h-4 w-4" />Cancel</Link>}
-        actions={<Button type="submit" variant="primary" loading={busy}>{editing ? 'Save changes' : 'Create profile'}</Button>} />
+      <PageHeader title={editing ? `Edit ${existing.data?.people.name}` : 'New people'} subtitle="Only the name is required. Everything else can be added later."
+        back={<Link to={editing ? `/peoples/${id}` : '/peoples'} className="mb-1 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><Icon name="left" className="h-4 w-4" />Cancel</Link>}
+        actions={<Button type="submit" variant="primary" loading={busy}>{editing ? 'Save changes' : 'Create people'}</Button>} />
 
       {Object.keys(errors).length > 0 && <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm">Some fields need attention: {Object.entries(errors).map(([k, v]) => `${k} (${v})`).join('; ')}</div>}
 
@@ -210,7 +210,7 @@ export default function ProfileForm() {
         <SelectField label="Political view" value={form.politicalView || ''} onChange={set('politicalView')} error={errors.politicalView}><option value="">Not specified</option>{withCurrent(POLITICAL_VIEWS, form.politicalView).map((r) => <option key={r} value={r}>{r}</option>)}</SelectField>
       </Section>
 
-      <Section title="Family" hint="Search by name or Dataverse ID. Marriages and parent links appear on both profiles.">
+      <Section title="Family" hint="Search by name or Dataverse ID. Marriages and parent links appear on both peoples.">
         <ProfilePicker label="Father" value={form.fatherId} onChange={setId('fatherId')} initialLabel={labels.fatherId} error={errors.fatherId} />
         <ProfilePicker label="Mother" value={form.motherId} onChange={setId('motherId')} initialLabel={labels.motherId} error={errors.motherId} />
         <SpousesEditor value={form.spouses} onChange={(v) => setForm((f) => ({ ...f, spouses: v }))} selfId={editing ? Number(id) : null} error={errors.spouses} />
@@ -247,7 +247,7 @@ export default function ProfileForm() {
       <Section title="Education & work">
         {field('educationLevel', 'Education level')}{field('educationGroup', 'Group / subject')}
         {field('occupation', 'Occupation', { className: 'sm:col-span-2' })}
-        {existing.data?.profile.nidHidden ? <p className="text-sm text-muted sm:col-span-2">National ID is hidden for your account.</p> : field('nid', 'National ID (NID)', { className: 'sm:col-span-2', hint: isAdmin ? 'Visible to administrators and whoever created this profile' : 'Only you and administrators can see this' })}
+        {existing.data?.people.nidHidden ? <p className="text-sm text-muted sm:col-span-2">National ID is hidden for your account.</p> : field('nid', 'National ID (NID)', { className: 'sm:col-span-2', hint: isAdmin ? 'Visible to administrators and whoever created this people' : 'Only you and administrators can see this' })}
       </Section>
 
       <Card className="p-5">
@@ -259,7 +259,7 @@ export default function ProfileForm() {
 
       <div className="sticky bottom-20 z-10 flex justify-end gap-2 rounded-2xl border border-line bg-surface/95 p-3 backdrop-blur md:bottom-4">
         <Button type="button" onClick={() => navigate(-1)}>Cancel</Button>
-        <Button type="submit" variant="primary" loading={busy}>{editing ? 'Save changes' : 'Create profile'}</Button>
+        <Button type="submit" variant="primary" loading={busy}>{editing ? 'Save changes' : 'Create people'}</Button>
       </div>
       <PhotoCropper file={cropSource} onCancel={() => setCropSource(null)} onDone={onCropped} />
     </form>

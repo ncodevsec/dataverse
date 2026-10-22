@@ -1,12 +1,12 @@
 import { query } from '../db/pool.js';
 import { notFound } from '../utils/httpError.js';
-import { SUMMARY_COLUMNS, toSummary, getFamily } from './profileService.js';
+import { SUMMARY_COLUMNS, toSummary, getFamily } from './peopleService.js';
 
 const MAX_NODES = 600;
 
 async function summariesByIds(ids) {
   if (!ids.length) return new Map();
-  const { rows } = await query(`SELECT ${SUMMARY_COLUMNS} FROM profiles p WHERE p.id = ANY($1::int[])`, [ids]);
+  const { rows } = await query(`SELECT ${SUMMARY_COLUMNS} FROM peoples p WHERE p.id = ANY($1::int[])`, [ids]);
   return new Map(rows.map((r) => [r.id, toSummary(r)]));
 }
 
@@ -19,32 +19,32 @@ async function summariesByIds(ids) {
  * All traversal happens inside PostgreSQL with depth limits, so a huge table never leaves the database.
  */
 export async function getTree(id, { up = 3, down = 2 } = {}) {
-  const focusRes = await query(`SELECT ${SUMMARY_COLUMNS} FROM profiles p WHERE p.id = $1`, [id]);
-  if (!focusRes.rows.length) throw notFound('Profile not found');
+  const focusRes = await query(`SELECT ${SUMMARY_COLUMNS} FROM peoples p WHERE p.id = $1`, [id]);
+  if (!focusRes.rows.length) throw notFound('People not found');
   const focus = toSummary(focusRes.rows[0]);
 
   const [lineageRes, ancRes, descRes, family] = await Promise.all([
     query(
       `WITH RECURSIVE l AS (
-         SELECT id, father_id, 0 AS depth FROM profiles WHERE id = $1
+         SELECT id, father_id, 0 AS depth FROM peoples WHERE id = $1
          UNION ALL
-         SELECT p.id, p.father_id, l.depth + 1 FROM l JOIN profiles p ON p.id = l.father_id WHERE l.depth < 60
+         SELECT p.id, p.father_id, l.depth + 1 FROM l JOIN peoples p ON p.id = l.father_id WHERE l.depth < 60
        ) SELECT id, depth FROM l ORDER BY depth DESC`, [id]),
     up > 0
       ? query(
         `WITH RECURSIVE a AS (
-           SELECT id, father_id, mother_id, 0 AS depth FROM profiles WHERE id = $1
+           SELECT id, father_id, mother_id, 0 AS depth FROM peoples WHERE id = $1
            UNION ALL
            SELECT p.id, p.father_id, p.mother_id, a.depth + 1
-             FROM a JOIN profiles p ON p.id = a.father_id OR p.id = a.mother_id WHERE a.depth < $2
+             FROM a JOIN peoples p ON p.id = a.father_id OR p.id = a.mother_id WHERE a.depth < $2
          ) SELECT DISTINCT id FROM a LIMIT ${MAX_NODES}`, [id, up])
       : { rows: [{ id }] },
     down > 0
       ? query(
         `WITH RECURSIVE d AS (
-           SELECT id, 0 AS depth FROM profiles WHERE id = $1
+           SELECT id, 0 AS depth FROM peoples WHERE id = $1
            UNION
-           SELECT c.id, d.depth + 1 FROM d JOIN profiles c ON c.father_id = d.id OR c.mother_id = d.id WHERE d.depth < $2
+           SELECT c.id, d.depth + 1 FROM d JOIN peoples c ON c.father_id = d.id OR c.mother_id = d.id WHERE d.depth < $2
          ) SELECT DISTINCT id FROM d LIMIT ${MAX_NODES}`, [id, down])
       : { rows: [{ id }] },
     getFamily(id),

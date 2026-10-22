@@ -58,12 +58,12 @@ export const duplicates = asyncHandler(async (_req, res) => res.json(await svc.d
 
 export const relink = asyncHandler(async (req, res) => {
   const linked = await svc.relinkAll();
-  await audit(req, 'contact.relink', { entityType: 'contact', summary: `Linked ${linked} contacts to profiles by phone number` });
+  await audit(req, 'contact.relink', { entityType: 'contact', summary: `Linked ${linked} contacts to peoples by phone number` });
   res.json({ linked });
 });
 
 export const bulkDelete = asyncHandler(async (req, res) => {
   const { rowCount } = await query('DELETE FROM caller_contacts WHERE connection_id = $1', [req.valid.params.id]);
-  await audit(req, 'contact.bulk_delete', { entityType: 'profile', entityId: req.valid.params.id, summary: `Deleted all ${rowCount} contacts of phonebook ${req.valid.params.id}` });
+  await audit(req, 'contact.bulk_delete', { entityType: 'people', entityId: req.valid.params.id, summary: `Deleted all ${rowCount} contacts of phonebook ${req.valid.params.id}` });
   res.json({ deleted: rowCount });
 });

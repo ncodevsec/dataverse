@@ -27,7 +27,7 @@ function fromPg(err) {
     }
     case '23503': return new HttpError(409, 'This record is referenced by other data or points to something that does not exist', { code: 'CONFLICT' });
     case '23514':
-      if (err.constraint === 'profiles_death_after_birth') return new HttpError(422, 'Date of death cannot be before date of birth', { code: 'VALIDATION_ERROR', details: { dateOfDeath: 'Cannot be before the date of birth' } });
+      if (err.constraint === 'peoples_death_after_birth') return new HttpError(422, 'Date of death cannot be before date of birth', { code: 'VALIDATION_ERROR', details: { dateOfDeath: 'Cannot be before the date of birth' } });
       return new HttpError(422, 'A value is not allowed', { code: 'VALIDATION_ERROR' });
     case '22P02':
     case '22007':
