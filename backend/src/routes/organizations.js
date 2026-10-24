@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import express from 'express';
 import { validate } from '../middleware/validate.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import * as c from '../controllers/orgController.js';
 import * as posts from '../controllers/postController.js';
 import * as links from '../controllers/linkController.js';
@@ -21,6 +22,7 @@ organizationsRouter.put('/:id/photo', validate({ params: idParam }), photoBody, 
 organizationsRouter.delete('/:id/photo', validate({ params: idParam }), c.removePhoto);
 organizationsRouter.get('/:id/posts', validate({ params: idParam }), posts.listForOrganization);
 organizationsRouter.post('/:id/posts', validate({ params: idParam, body: postSchema }), posts.createForOrganization);
+organizationsRouter.post('/:id/import-peoples', rateLimit({ name: 'import', windowMs: 60 * 60 * 1000, max: 20, keyFn: (req) => req.user?.id }), validate({ params: idParam }), c.importPeoplesHandler);
 organizationsRouter.get('/:id/relations', validate({ params: idParam }), links.relations);
 organizationsRouter.get('/:id/members', validate({ params: idParam, query: pageParamsQuery }), links.members);
 organizationsRouter.get('/:id/structure', validate({ params: idParam, query: structureQuery }), links.structure);

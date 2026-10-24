@@ -207,6 +207,7 @@ export const stats = asyncHandler(async (_req, res) => {
     query(`SELECT to_char(d::date, 'YYYY-MM-DD') AS day,
         (SELECT count(*) FROM users WHERE created_at::date = d::date)::int AS users,
         (SELECT count(*) FROM peoples WHERE created_at::date = d::date)::int AS peoples,
+        (SELECT count(*) FROM organizations WHERE created_at::date = d::date)::int AS organizations,
         (SELECT count(*) FROM caller_contacts WHERE created_at::date = d::date)::int AS contacts
        FROM generate_series(current_date - 13, current_date, interval '1 day') AS d ORDER BY d`),
     query(`SELECT id, display_name, email, role, created_at FROM users ORDER BY created_at DESC LIMIT 5`),

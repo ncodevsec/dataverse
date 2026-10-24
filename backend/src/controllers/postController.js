@@ -1,6 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { forbidden, notFound } from '../utils/httpError.js';
 import { escapeLike } from '../utils/phone.js';
+import { parseSearch } from '../utils/search.js';
 import { query } from '../db/pool.js';
 import { canEditPeople } from '../services/peopleService.js';
 import { canEditOrg } from '../services/orgService.js';
@@ -68,7 +69,11 @@ export const feed = asyncHandler(async (req, res) => {
   if (tag) where.push(`${p(tag)} = ANY(po.tags)`);
   if (peopleId) where.push(`po.people_id = ${p(peopleId)}`);
   if (organizationId) where.push(`po.organization_id = ${p(organizationId)}`);
-  if (q) { const like = p(`%${escapeLike(q)}%`); where.push(`(po.title ILIKE ${like} OR po.content ILIKE ${like} OR COALESCE(pr.name, og.name) ILIKE ${like})`); }
+  if (q) {
+    const { tags, words } = parseSearch(q);
+    for (const t of tags) where.push(`${p(t)} = ANY(po.tags)`);
+    if (words.length) { const like = p(`%${escapeLike(words.join(' '))}%`); where.push(`(po.title ILIKE ${like} OR po.content ILIKE ${like} OR COALESCE(pr.name, og.name) ILIKE ${like})`); }
+  }
   const { rows } = await query(
     `SELECT count(*) OVER() AS total, x.* FROM (${SELECT} WHERE ${where.join(' AND ')}) x
       ORDER BY x.created_at DESC, x.id DESC LIMIT ${p(limit)} OFFSET ${p((page - 1) * limit)}`, params);
@@ -147,3 +152,15 @@ export const remove = asyncHandler(async (req, res) => {
   await audit(req, 'post.delete', { entityType: 'post', entityId: post.id, summary: `Deleted post "${post.title}"` });
   res.status(204).end();
 });
+
+/** Used by the global search and the dashboard: published posts (and the viewer's own) matching words and/or #tags. */
+export async function searchPosts(user, q, limit = 6) {
+  const params = [user.id];
+  const p = (v) => { params.push(v); return `$${params.length}`; };
+  const where = [`(po.status = 'published' OR po.created_by = $1)`];
+  const { tags, words } = parseSearch(q);
+  for (const t of tags) where.push(`${p(t)} = ANY(po.tags)`);
+  if (words.length) { const like = p(`%${escapeLike(words.join(' '))}%`); where.push(`(po.title ILIKE ${like} OR po.content ILIKE ${like})`); }
+  const { rows } = await query(`${SELECT} WHERE ${where.join(' AND ')} ORDER BY po.created_at DESC, po.id DESC LIMIT ${p(limit)}`, params);
+  return rows.map((r) => out(r, user, { excerpt: true }));
+}

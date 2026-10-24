@@ -4,6 +4,7 @@ import { query } from '../db/pool.js';
 import * as svc from '../services/orgService.js';
 import { getSettings } from '../services/settings.js';
 import { audit } from '../services/audit.js';
+import { validateImport, importPeoples } from '../services/importService.js';
 
 const isAdmin = (u) => u.role === 'ADMIN';
 async function loadOr404(id) {
@@ -71,4 +72,17 @@ export const removePhoto = asyncHandler(async (req, res) => {
   if (!svc.canEditOrg(req.user, existing)) throw forbidden("You cannot change this organization's logo");
   await svc.deleteOrgPhoto(id);
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------- bulk import of people into this organization
+export const importPeoplesHandler = asyncHandler(async (req, res) => {
+  const { id } = req.valid.params;
+  const org = await loadOr404(id);
+  if (!svc.canEditOrg(req.user, org)) throw forbidden('You can only import people into organizations you can edit');
+  if (!isAdmin(req.user) && !(await getSettings()).allow_user_contributions) throw forbidden('Adding people is limited to administrators right now');
+  const rows = validateImport(req.body);
+  const dryRun = req.query.dryRun === '1' || req.query.dryRun === 'true';
+  const result = await importPeoples(id, rows, req.user, { dryRun });
+  if (!dryRun) await audit(req, 'organization.import', { entityType: 'organization', entityId: id, summary: `Imported ${result.total} people into "${org.name}" (${result.created} new)`, details: { total: result.total, created: result.created, linkedExisting: result.linkedExisting } });
+  res.status(dryRun ? 200 : 201).json(result);
 });

@@ -45,6 +45,7 @@ export function createApp() {
 
   // Body parsers. The vCard import accepts a larger JSON body; everything else is capped small.
   app.use('/api/contacts/import-vcf', express.json({ limit: '2mb' }));
+  app.use(/^\/api\/organizations\/\d+\/import-peoples$/, express.json({ limit: '2mb' }));
   app.use(express.json({ limit: '100kb' }));
 
   if (!config.isProd) {

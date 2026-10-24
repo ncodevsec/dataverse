@@ -2,6 +2,7 @@ import { query, withTransaction } from '../db/pool.js';
 import { badRequest, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike } from '../utils/phone.js';
 import { sniffImageType } from './peopleService.js';
+import { parseSearch } from '../utils/search.js';
 
 const isAdmin = (u) => u?.role === 'ADMIN';
 export const canEditOrg = (u, o) => !!u && (isAdmin(u) || o.created_by === u.id);
@@ -15,10 +16,20 @@ export const FIELD_COLUMNS = {
 };
 
 const logoUrl = (r) => (r.photo_updated_at ? `/api/organizations/${r.id}/photo?v=${new Date(r.photo_updated_at).getTime()}` : null);
-export const ORG_SUMMARY_COLUMNS = `o.id, o.org_type, o.name, o.short_name, o.district, o.phone, o.website, o.founded_on, o.dissolved_on, o.tags, o.photo_updated_at, o.created_at`;
+// A sub-unit without its own logo shows the nearest parent organization's logo ("id:timestamp" of that parent).
+export const INHERITED_LOGO_SQL = `CASE WHEN o.photo_updated_at IS NULL THEN (
+  WITH RECURSIVE up(id, depth) AS (
+    SELECT l.to_id, 1 FROM organization_links l WHERE l.from_id = o.id AND l.link_type = 'SUB_UNIT_OF'
+    UNION ALL
+    SELECT l.to_id, up.depth + 1 FROM organization_links l JOIN up ON l.from_id = up.id WHERE l.link_type = 'SUB_UNIT_OF' AND up.depth < 6)
+  SELECT a.id::text || ':' || floor(extract(epoch FROM a.photo_updated_at) * 1000)::bigint::text
+    FROM up JOIN organizations a ON a.id = up.id WHERE a.photo_updated_at IS NOT NULL ORDER BY up.depth, a.id LIMIT 1) END AS inherited_logo`;
+export const ORG_SUMMARY_COLUMNS = `o.id, o.org_type, o.name, o.short_name, o.email, o.district, o.phone, o.website, o.founded_on, o.dissolved_on, o.tags, o.photo_updated_at, o.created_at, ${INHERITED_LOGO_SQL}`;
+const inheritedLogoUrl = (r) => { if (!r.inherited_logo) return null; const [pid, ts] = r.inherited_logo.split(':'); return `/api/organizations/${pid}/photo?v=${ts}`; };
 export const toOrgSummary = (r) => ({
-  id: r.id, orgType: r.org_type, name: r.name, shortName: r.short_name, district: r.district, phone: r.phone, website: r.website,
-  foundedOn: r.founded_on, dissolvedOn: r.dissolved_on, tags: r.tags || [], photoUrl: logoUrl(r),
+  id: r.id, orgType: r.org_type, name: r.name, shortName: r.short_name, email: r.email, district: r.district, phone: r.phone, website: r.website,
+  foundedOn: r.founded_on, dissolvedOn: r.dissolved_on, tags: r.tags || [], createdAt: r.created_at,
+  photoUrl: logoUrl(r) || inheritedLogoUrl(r), logoInherited: !r.photo_updated_at && !!r.inherited_logo,
 });
 const normalizeSocial = (v) => (Array.isArray(v) ? v : []);
 
@@ -35,7 +46,7 @@ export async function getOrgRow(id, client = { query }) {
   return rows[0] || null;
 }
 export async function getOrg(id, viewer) {
-  const row = await getOrgRow(id);
+  const row = (await query(`SELECT o.*, ${INHERITED_LOGO_SQL} FROM organizations o WHERE o.id = $1`, [id])).rows[0];
   if (!row) throw notFound('Organization not found');
   return { organization: toOrgFull(row, viewer) };
 }
@@ -46,7 +57,9 @@ export async function searchOrgs(f) {
   const p = (v) => { params.push(v); return `$${params.length}`; };
   let rank = '';
   if (f.q) {
-    for (const t of f.q.split(/\s+/).filter(Boolean).slice(0, 6)) {
+    const { tags, words } = parseSearch(f.q);
+    for (const tag of tags) where.push(`${p(tag)} = ANY(o.tags)`);
+    for (const t of words) {
       const like = p(`%${escapeLike(t)}%`);
       const parts = [`o.name ILIKE ${like}`, `o.short_name ILIKE ${like}`, `o.email ILIKE ${like}`, `o.website ILIKE ${like}`];
       const d = digitsOnly(t);
@@ -54,7 +67,7 @@ export async function searchOrgs(f) {
       if (/^\d{1,9}$/.test(t)) parts.push(`o.id = ${p(Number(t))}`);
       where.push(`(${parts.join(' OR ')})`);
     }
-    rank = `(lower(o.name) = lower(${p(f.q)})) DESC, (o.name ILIKE ${p(`${escapeLike(f.q)}%`)}) DESC, `;
+    if (words.length) { const phrase = words.join(' '); rank = `(lower(o.name) = lower(${p(phrase)})) DESC, (o.name ILIKE ${p(`${escapeLike(phrase)}%`)}) DESC, `; }
   }
   if (f.orgType) where.push(`o.org_type = ${p(f.orgType)}`);
   if (f.tag) where.push(`${p(f.tag)} = ANY(o.tags)`);

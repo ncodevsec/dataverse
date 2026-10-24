@@ -7,7 +7,7 @@ import { contactsRouter } from './contacts.js';
 import { adminRouter } from './admin.js';
 import * as links from '../controllers/linkController.js';
 import * as misc from '../controllers/miscController.js';
-import { idParam, searchQuery, treeQuery, membershipCreateSchema, orgLinkCreateSchema, linkUpdateSchema } from '../utils/schemas.js';
+import { idParam, searchQuery, treeQuery, tagsQuery, membershipCreateSchema, orgLinkCreateSchema, linkUpdateSchema } from '../utils/schemas.js';
 import { organizationsRouter } from './organizations.js';
 
 export const api = Router();
@@ -22,6 +22,7 @@ api.use('/auth', authRouter);
 api.use(requireAuth);
 api.use('/me', meRouter);
 api.get('/dashboard', misc.dashboard);
+api.get('/tags', validate({ query: tagsQuery }), misc.tags);
 api.get('/search', validate({ query: searchQuery }), misc.search);
 api.get('/tree/:id', validate({ params: idParam, query: treeQuery }), misc.tree);
 api.get('/peoples/:id/memberships', validate({ params: idParam }), links.forPeople);

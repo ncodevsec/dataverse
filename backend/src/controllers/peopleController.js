@@ -90,3 +90,15 @@ export const removePhoto = asyncHandler(async (req, res) => {
   await svc.deletePhoto(id);
   res.status(204).end();
 });
+
+// ---------------------------------------------------------------- add a family member (link existing or create new)
+export const addFamily = asyncHandler(async (req, res) => {
+  const { id } = req.valid.params;
+  const existing = await loadOr404(id);
+  if (!svc.canEditPeople(req.user, existing)) throw forbidden('You can only edit people you created or that are linked to your account');
+  const { relation, create } = req.valid.body;
+  if (create && !isAdmin(req.user) && !(await getSettings()).allow_user_contributions) throw forbidden('Adding people is limited to administrators right now');
+  const { otherId, created } = await svc.addFamilyMember(id, req.valid.body, req.user);
+  await audit(req, 'people.family_add', { entityType: 'people', entityId: id, summary: `Added ${relation} to "${existing.name}"${created ? ' (new person)' : ''}`, details: { relation, otherId, created } });
+  res.status(201).json({ ...(await svc.getPeople(id, req.user)), addedId: otherId, created });
+});

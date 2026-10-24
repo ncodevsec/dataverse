@@ -235,7 +235,11 @@ export const vcfImportSchema = z.object({
 }).strict();
 
 // ---------- settings ----------
+export const PEOPLE_FIELD_KEYS = ['nickname', 'occupation', 'district', 'presentCity', 'phone', 'email', 'website', 'gender', 'maritalStatus', 'bloodGroup', 'age', 'religion', 'lineage', 'tags', 'createdAt'];
+export const ORG_FIELD_KEYS = ['shortName', 'orgType', 'district', 'phone', 'email', 'website', 'foundedOn', 'tags', 'createdAt'];
+const uniqueKeys = (keys) => z.array(z.enum(keys)).max(8).refine((a) => new Set(a).size === a.length, 'Each field can only be chosen once');
 export const siteSettingsSchema = z.object({
+  card_fields: z.object({ people: uniqueKeys(PEOPLE_FIELD_KEYS), organization: uniqueKeys(ORG_FIELD_KEYS) }).strict(),
   site_name: z.string().trim().min(1).max(60),
   site_description: z.string().trim().max(240),
   registration_enabled: z.boolean(),
@@ -299,3 +303,17 @@ export const familyAddSchema = z.object({
   create: z.object({ name: z.string().trim().min(1, 'Name is required').max(255), nickname: optText(255), gender: optEnum(['MALE', 'FEMALE']) }).strict().optional(),
 }).strict().refine((b) => (b.existingId == null) !== (b.create == null), { message: 'Choose an existing person or create a new one', path: ['existingId'] });
 export const tagsQuery = z.object({ prefix: z.string().trim().max(40).transform((v) => v.replace(/^#+/, '').toLowerCase()).default(''), limit: z.coerce.number().int().min(1).max(10).default(5) });
+
+// ---------- bulk import: many people into one organization, each with a role ----------
+export const importPersonSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(255),
+  role: optText(120), relation: z.enum(MEMBERSHIP_RELATIONS).optional(), startedOn: dateField, endedOn: dateField, note: optText(1000),
+  nickname: optText(255), gender: optEnum(['MALE', 'FEMALE']), dob: dateField, phone: optText(32),
+  email: z.preprocess(clean, z.string().email('Enter a valid email address').max(254).nullable().optional()),
+  website: websiteField, occupation: optText(255), religion: optText(120), politicalView: optText(255), district: optText(127), about: optText(10_000), tags: tagsField,
+}).strict();
+export const bulkImportEnvelope = z.object({
+  _help: z.any().optional(),
+  defaults: z.record(z.any()).optional(),
+  peoples: z.array(z.record(z.any())).min(1, 'Add at least one person').max(500, 'At most 500 people per import'),
+}).strict();

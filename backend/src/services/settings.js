@@ -9,6 +9,7 @@ export const DEFAULTS = {
   registration_enabled: true,
   allow_user_contributions: true,
   blur_female_photos: false,
+  card_fields: { people: ['nickname', 'occupation', 'district'], organization: ['district', 'foundedOn'] },
   default_theme: 'system',
   contact_email: '',
 };
@@ -44,4 +45,5 @@ export const publicSettings = (s) => ({
   registrationEnabled: s.registration_enabled,
   defaultTheme: s.default_theme,
   blurFemalePhotos: !!s.blur_female_photos,
+  cardFields: s.card_fields,
 });
