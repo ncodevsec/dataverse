@@ -96,18 +96,15 @@ const dateField = z.preprocess(
 
 const tagsField = z.preprocess(
   (v) => (typeof v === 'string' ? v.split(',') : v),
-  z.array(z.string().trim().min(1).max(40)).max(30).optional().transform((a) => (a ? [...new Set(a)] : a)),
+  z.array(z.string().trim().transform((t) => t.replace(/^#+/, '').toLowerCase()).pipe(z.string().min(1).max(40))).max(30).optional().transform((a) => (a ? [...new Set(a)] : a)),
 );
 
-// Several accounts per network: { facebook: ['url or handle', ...], instagram: [...], tiktok: [...] }
-export const SOCIAL_NETWORKS = ['facebook', 'instagram', 'tiktok'];
-const socialList = z.preprocess(
-  (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string').map((x) => x.trim()).filter(Boolean))] : v),
-  z.array(z.string().max(255)).max(10),
-);
-const socialLinksField = z.preprocess(
-  (v) => (v === null ? {} : v),
-  z.object(Object.fromEntries(SOCIAL_NETWORKS.map((n) => [n, socialList.optional()]))).strict().optional(),
+// Social media: one flat list of profile URLs (https:// is added when missing; only http(s) is accepted).
+const asUrl = (v) => { const c = typeof v === 'string' ? v.trim() : ''; return c && !/^[a-z][a-z0-9+.-]*:/i.test(c) ? `https://${c}` : c; };
+const validUrl = (u) => { try { const x = new URL(u); return ['http:', 'https:'].includes(x.protocol) && x.hostname.includes('.'); } catch { return false; } };
+export const socialLinksField = z.preprocess(
+  (v) => (v === null ? [] : Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string').map(asUrl).filter(Boolean))] : v),
+  z.array(z.string().max(255).refine(validUrl, 'Enter a valid link (http or https)')).max(10).optional(),
 );
 const idList = z.preprocess(
   (v) => (Array.isArray(v) ? [...new Set(v)] : v),
@@ -293,3 +290,12 @@ export const membershipCreateSchema = z.object({ peopleId: refId, organizationId
 export const orgLinkCreateSchema = z.object({ fromId: refId, toId: refId, linkType: z.enum(['SUB_UNIT_OF', 'MEMBER_OF', 'AFFILIATED_WITH', 'CONNECTED_TO']), ...linkExtras }).strict();
 export const linkUpdateSchema = z.object(linkExtras).strict();
 export const structureQuery = z.object({ depth: z.coerce.number().int().min(1).max(6).default(3) });
+
+// ---------- family members ----------
+export const FAMILY_RELATIONS = ['father', 'mother', 'spouse', 'sibling', 'child'];
+export const familyAddSchema = z.object({
+  relation: z.enum(FAMILY_RELATIONS),
+  existingId: z.number().int().positive().max(2_147_483_647).optional(),
+  create: z.object({ name: z.string().trim().min(1, 'Name is required').max(255), nickname: optText(255), gender: optEnum(['MALE', 'FEMALE']) }).strict().optional(),
+}).strict().refine((b) => (b.existingId == null) !== (b.create == null), { message: 'Choose an existing person or create a new one', path: ['existingId'] });
+export const tagsQuery = z.object({ prefix: z.string().trim().max(40).transform((v) => v.replace(/^#+/, '').toLowerCase()).default(''), limit: z.coerce.number().int().min(1).max(10).default(5) });

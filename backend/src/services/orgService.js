@@ -1,7 +1,6 @@
 import { query, withTransaction } from '../db/pool.js';
 import { badRequest, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike } from '../utils/phone.js';
-import { SOCIAL_NETWORKS } from '../utils/schemas.js';
 import { sniffImageType } from './peopleService.js';
 
 const isAdmin = (u) => u?.role === 'ADMIN';
@@ -21,7 +20,7 @@ export const toOrgSummary = (r) => ({
   id: r.id, orgType: r.org_type, name: r.name, shortName: r.short_name, district: r.district, phone: r.phone, website: r.website,
   foundedOn: r.founded_on, dissolvedOn: r.dissolved_on, tags: r.tags || [], photoUrl: logoUrl(r),
 });
-const normalizeSocial = (v) => Object.fromEntries(SOCIAL_NETWORKS.map((n) => [n, Array.isArray(v?.[n]) ? v[n] : []]));
+const normalizeSocial = (v) => (Array.isArray(v) ? v : []);
 
 export const toOrgFull = (r, viewer) => ({
   ...toOrgSummary(r),

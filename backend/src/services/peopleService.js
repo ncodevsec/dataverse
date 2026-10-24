@@ -1,7 +1,7 @@
 import { query, withTransaction } from '../db/pool.js';
 import { badRequest, conflict, forbidden, notFound } from '../utils/httpError.js';
 import { digitsOnly, escapeLike } from '../utils/phone.js';
-import { SOCIAL_NETWORKS } from '../utils/schemas.js';
+import { parseSearch } from '../utils/search.js';
 
 // API field -> column. spouses / childIds / siblingIds are handled separately because they edit other rows.
 export const FIELD_COLUMNS = {
@@ -21,6 +21,10 @@ export const toSummary = (r) => ({
   id: r.id,
   name: r.name,
   nickname: r.nickname,
+  email: r.email,
+  website: r.website,
+  religion: r.religion,
+  createdAt: r.created_at,
   gender: r.gender,
   maritalStatus: r.marital_status,
   dob: r.dob,
@@ -38,7 +42,7 @@ export const toSummary = (r) => ({
   photoUrl: photoUrl(r),
 });
 
-export const SUMMARY_COLUMNS = `p.id, p.name, p.nickname, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
+export const SUMMARY_COLUMNS = `p.id, p.name, p.nickname, p.email, p.website, p.religion, p.created_at, p.gender, p.marital_status, p.dob, p.date_of_death, p.blood_group, p.occupation,
   p.district, p.present_city, p.phone, p.lineage, p.tags, p.father_id, p.mother_id, p.spouse_id, p.photo_updated_at`;
 
 // ---------------------------------------------------------------- permissions
@@ -48,7 +52,7 @@ export const canDeletePeople = (u, p) => !!u && (isAdmin(u) || p.created_by === 
 /** NID is sensitive: only admins, the person it belongs to, and whoever created the record may see it. */
 const canSeeNid = (u, p) => !!u && (isAdmin(u) || p.created_by === u.id || u.people_id === p.id);
 
-const normalizeSocial = (v) => Object.fromEntries(SOCIAL_NETWORKS.map((n) => [n, Array.isArray(v?.[n]) ? v[n] : []]));
+const normalizeSocial = (v) => (Array.isArray(v) ? v : []);
 
 export function toFull(r, viewer) {
   const nidVisible = canSeeNid(viewer, r);
@@ -85,8 +89,9 @@ export async function searchPeoples(f) {
 
   let rank = '';
   if (f.q) {
-    const tokens = f.q.split(/\s+/).filter(Boolean).slice(0, 6);
-    for (const t of tokens) {
+    const { tags, words } = parseSearch(f.q);
+    for (const tag of tags) where.push(`${p(tag)} = ANY(p.tags)`);
+    for (const t of words) {
       const like = p(`%${escapeLike(t)}%`);
       const parts = [`p.name ILIKE ${like}`, `p.nickname ILIKE ${like}`, `p.email ILIKE ${like}`, `p.lineage ILIKE ${like}`];
       const d = digitsOnly(t);
@@ -94,7 +99,7 @@ export async function searchPeoples(f) {
       if (/^\d{1,9}$/.test(t)) parts.push(`p.id = ${p(Number(t))}`);
       where.push(`(${parts.join(' OR ')})`);
     }
-    rank = `(lower(p.name) = lower(${p(f.q)})) DESC, (p.name ILIKE ${p(`${escapeLike(f.q)}%`)}) DESC, `;
+    if (words.length) { const phrase = words.join(' '); rank = `(lower(p.name) = lower(${p(phrase)})) DESC, (p.name ILIKE ${p(`${escapeLike(phrase)}%`)}) DESC, `; }
   }
   if (f.gender) where.push(`p.gender = ${p(f.gender)}`);
   if (f.maritalStatus) where.push(`p.marital_status = ${p(f.maritalStatus)}`);
@@ -384,49 +389,127 @@ async function syncRelatives(client, id, data, viewer) {
 }
 
 // ---------------------------------------------------------------- writes
-export async function createPeople(data, viewer) {
-  return withTransaction(async (client) => {
-    await validateRelations(client, null, null, data);
-    validateDates(null, data);
-    const cols = ['created_by', 'updated_by'];
-    const vals = [viewer.id, viewer.id];
-    for (const [key, col] of Object.entries(FIELD_COLUMNS)) {
-      if (data[key] === undefined) continue;
-      cols.push(col); vals.push(key === 'socialLinks' ? JSON.stringify(data[key]) : data[key]);
-    }
-    const { rows } = await client.query(
-      `INSERT INTO peoples (${cols.join(', ')}) VALUES (${vals.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, vals);
-    const id = rows[0].id;
-    if (data.spouses?.length) await syncSpouses(client, id, data.spouses);
-    await syncRelatives(client, id, data, viewer);
-    return id;
-  });
+export async function createPeopleTx(client, data, viewer) {
+  await validateRelations(client, null, null, data);
+  validateDates(null, data);
+  const cols = ['created_by', 'updated_by'];
+  const vals = [viewer.id, viewer.id];
+  for (const [key, col] of Object.entries(FIELD_COLUMNS)) {
+    if (data[key] === undefined) continue;
+    cols.push(col); vals.push(key === 'socialLinks' ? JSON.stringify(data[key]) : data[key]);
+  }
+  const { rows } = await client.query(
+    `INSERT INTO peoples (${cols.join(', ')}) VALUES (${vals.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, vals);
+  const id = rows[0].id;
+  if (data.spouses?.length) await syncSpouses(client, id, data.spouses);
+  await syncRelatives(client, id, data, viewer);
+  return id;
+}
+export const createPeople = (data, viewer) => withTransaction((client) => createPeopleTx(client, data, viewer));
+
+export async function updatePeopleTx(client, id, data, viewer) {
+  const current = (await client.query('SELECT * FROM peoples WHERE id = $1 FOR UPDATE', [id])).rows[0];
+  if (!current) throw notFound('People not found');
+  await validateRelations(client, id, current, data);
+  validateDates(current, data);
+  const sets = ['updated_by = $2'];
+  const vals = [id, viewer.id];
+  const changed = [];
+  for (const [key, col] of Object.entries(FIELD_COLUMNS)) {
+    if (data[key] === undefined) continue;
+    vals.push(key === 'socialLinks' ? JSON.stringify(data[key]) : data[key]);
+    sets.push(`${col} = $${vals.length}`);
+    changed.push(key);
+  }
+  await client.query(`UPDATE peoples SET ${sets.join(', ')} WHERE id = $1`, vals);
+  if (data.spouses !== undefined) {
+    await syncSpouses(client, id, data.spouses);
+    changed.push('spouses');
+  }
+  changed.push(...(await syncRelatives(client, id, data, viewer)));
+  return { changed, previousName: current.name };
+}
+export const updatePeople = (id, data, viewer) => withTransaction((client) => updatePeopleTx(client, id, data, viewer));
+
+// ---------------------------------------------------------------- one-step "add a family member"
+const ADDRESS_KEYS = [['street', 'street'], ['unionName', 'union_name'], ['subDistrict', 'sub_district'], ['district', 'district'], ['state', 'state'], ['zip', 'zip'], ['country', 'country']];
+const pickAddress = (row) => Object.fromEntries(ADDRESS_KEYS.filter(([, c]) => row[c] != null && String(row[c]).trim() !== '').map(([k, c]) => [k, row[c]]));
+/** Permanent address a profile effectively has: its own, else the nearest paternal ancestor's. */
+async function effectiveAddress(row) {
+  if (hasAddress(row)) return pickAddress(row);
+  const inh = await inheritedAddress(row);
+  return inh ? Object.fromEntries(ADDRESS_KEYS.map(([k]) => [k, inh[k]]).filter(([, v]) => v)) : {};
 }
 
-export async function updatePeople(id, data, viewer) {
-  const userId = viewer.id;
-  return withTransaction(async (client) => {
-    const current = (await client.query('SELECT * FROM peoples WHERE id = $1 FOR UPDATE', [id])).rows[0];
-    if (!current) throw notFound('People not found');
-    await validateRelations(client, id, current, data);
-    validateDates(current, data);
+/** What a newly created relative inherits from `self`, by relationship. */
+async function inheritedFor(client, self, relation) {
+  const out = {};
+  if (self.religion) out.religion = self.religion;
+  const spouse = self.spouse_id ? (await client.query('SELECT * FROM peoples WHERE id = $1', [self.spouse_id])).rows[0] : null;
+  const addr = await effectiveAddress(self);
+  if (relation === 'child') {
+    const male = self.gender !== 'FEMALE';
+    if (male) { out.fatherId = self.id; if (spouse && spouse.gender !== 'MALE') out.motherId = spouse.id; } else { out.motherId = self.id; if (spouse && spouse.gender !== 'FEMALE') out.fatherId = spouse.id; }
+    const father = male ? self : spouse && spouse.gender === 'MALE' ? spouse : null;
+    if (father?.lineage) out.lineage = father.lineage;
+    Object.assign(out, father ? (father === self ? addr : await effectiveAddress(father)) : addr);
+  } else if (relation === 'sibling') {
+    if (self.father_id) out.fatherId = self.father_id;
+    if (self.mother_id) out.motherId = self.mother_id;
+    if (self.lineage) out.lineage = self.lineage;
+    Object.assign(out, addr);
+  } else if (relation === 'father') {
+    out.gender = 'MALE'; if (self.lineage) out.lineage = self.lineage; Object.assign(out, addr);
+  } else if (relation === 'mother') {
+    out.gender = 'FEMALE'; Object.assign(out, addr);
+  } else if (relation === 'spouse') {
+    if (self.gender === 'MALE') out.gender = 'FEMALE'; else if (self.gender === 'FEMALE') out.gender = 'MALE';
+    if (self.present_street) out.presentStreet = self.present_street;
+    if (self.present_city) out.presentCity = self.present_city;
+  }
+  return out;
+}
 
-    const sets = ['updated_by = $2'];
-    const vals = [id, userId];
-    const changed = [];
-    for (const [key, col] of Object.entries(FIELD_COLUMNS)) {
-      if (data[key] === undefined) continue;
-      vals.push(key === 'socialLinks' ? JSON.stringify(data[key]) : data[key]);
-      sets.push(`${col} = $${vals.length}`);
-      changed.push(key);
+/** Links an existing person, or creates a new one (inheriting shared data), as father / mother / spouse / sibling / child. */
+export async function addFamilyMember(id, { relation, existingId, create }, viewer) {
+  return withTransaction(async (client) => {
+    const self = (await client.query('SELECT * FROM peoples WHERE id = $1 FOR UPDATE', [id])).rows[0];
+    if (!self) throw notFound('People not found');
+    if ((relation === 'sibling') && !self.father_id && !self.mother_id) {
+      throw badRequest('Siblings share a parent: link a father or mother first', { relation: 'This person has no parents on file' });
     }
-    await client.query(`UPDATE peoples SET ${sets.join(', ')} WHERE id = $1`, vals);
-    if (data.spouses !== undefined) {
-      await syncSpouses(client, id, data.spouses);
-      changed.push('spouses');
+    if (existingId === id) throw badRequest('A person cannot be their own relative', { existingId: 'Invalid selection' });
+    let otherId = existingId;
+    let createdNow = false;
+    if (create) {
+      const inherited = await inheritedFor(client, self, relation);
+      const data = { ...inherited, name: create.name, nickname: create.nickname ?? undefined, gender: create.gender ?? inherited.gender ?? undefined };
+      otherId = await createPeopleTx(client, data, viewer); // child / sibling are already linked through the inherited parent ids
+      createdNow = true;
+    } else {
+      const { rows } = await client.query('SELECT id FROM peoples WHERE id = $1', [otherId]);
+      if (!rows.length) throw badRequest(`Person ${otherId} does not exist`, { existingId: 'No person with this ID' });
     }
-    changed.push(...(await syncRelatives(client, id, data, viewer)));
-    return { changed, previousName: current.name };
+    if (relation === 'father' || relation === 'mother') {
+      const col = relation === 'father' ? 'father_id' : 'mother_id';
+      if (self[col] && self[col] !== otherId) throw conflict(`This person already has a ${relation}. Change it on the edit page.`, { relation: `A ${relation} is already linked` });
+      if (self[col] !== otherId) await updatePeopleTx(client, id, { [relation === 'father' ? 'fatherId' : 'motherId']: otherId }, viewer);
+    } else if (relation === 'spouse') {
+      const marriages = (await client.query('SELECT * FROM marriages WHERE person_a = $1 OR person_b = $1', [id])).rows;
+      if (marriages.some((m) => m.person_a === otherId || m.person_b === otherId)) throw conflict('Already married to this person', { existingId: 'Already linked as a spouse' });
+      const spouses = marriages.map((m) => ({ personId: m.person_a === id ? m.person_b : m.person_a, marriedOn: m.married_on, endedOn: m.ended_on, endReason: m.end_reason }));
+      await updatePeopleTx(client, id, { spouses: [...spouses, { personId: otherId }] }, viewer);
+    } else if (!createdNow && relation === 'child') {
+      const kids = (await client.query('SELECT id FROM peoples WHERE father_id = $1 OR mother_id = $1', [id])).rows.map((r) => r.id);
+      if (kids.includes(otherId)) throw conflict('Already linked as a child', { existingId: 'Already linked' });
+      await updatePeopleTx(client, id, { childIds: [...kids, otherId] }, viewer);
+    } else if (!createdNow && relation === 'sibling') {
+      const sibs = (await client.query(
+        'SELECT id FROM peoples WHERE id <> $1 AND ((father_id IS NOT NULL AND father_id = $2) OR (mother_id IS NOT NULL AND mother_id = $3))', [id, self.father_id, self.mother_id])).rows.map((r) => r.id);
+      if (sibs.includes(otherId)) throw conflict('Already linked as a sibling', { existingId: 'Already linked' });
+      await updatePeopleTx(client, id, { siblingIds: [...sibs, otherId] }, viewer);
+    }
+    return { otherId, created: createdNow };
   });
 }
 
