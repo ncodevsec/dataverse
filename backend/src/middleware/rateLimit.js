@@ -3,10 +3,8 @@ import { HttpError } from '../utils/httpError.js';
 
 export function clientIp(req) {
   // Only trust a platform header on the platform that sets (and overwrites) it; on any other host a client could spoof it.
-  // Netlify: x-nf-client-connection-ip. Vercel: x-vercel-forwarded-for. Elsewhere: Express' trusted-proxy aware req.ip.
-  const platformIp = process.env.NETLIFY ? req.headers['x-nf-client-connection-ip']
-    : process.env.VERCEL ? req.headers['x-vercel-forwarded-for']
-    : undefined;
+  // Vercel: x-vercel-forwarded-for. Elsewhere: Express' trusted-proxy aware req.ip.
+  const platformIp = process.env.VERCEL ? req.headers['x-vercel-forwarded-for'] : undefined;
   return (typeof platformIp === 'string' && platformIp.split(',')[0].trim()) || req.ip || 'unknown';
 }
 

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { config } from '../config.js';
 
 // bcryptjs is the pure-JS bcrypt implementation: same algorithm and hash format as native bcrypt,
-// but no native build step, which keeps Netlify Functions deploys reliable.
+// but no native build step, which keeps serverless deploys reliable.
 export const hashPassword = (plain) => bcrypt.hash(plain, config.bcryptRounds);
 export const verifyPassword = (plain, hash) => bcrypt.compare(plain, hash);
 

@@ -1,7 +1,7 @@
 # Deploying to Vercel (`production` branch)
 
 Frontend (Vite/React) and backend (Express) both run on Vercel from the `production` branch.
-`vercel.json` + `api/index.js` are Vercel-only files; Netlify files are untouched.
+`vercel.json` + `api/index.js` are the Vercel entry points.
 
 ## Environment variables (Vercel > Project > Settings > Environment Variables, scope: Production)
 | Name | Value |

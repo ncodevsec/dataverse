@@ -9,12 +9,10 @@ import { authenticate, csrfGuard } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { api } from './routes/index.js';
 
-const NETLIFY_PREFIX = '/.netlify/functions/api';
-
 /**
  * Builds the Express application. It has no knowledge of where it runs:
  *   - backend/src/server.js          -> app.listen()            (VPS / Docker / any Node host)
- *   - netlify/functions/api.mjs      -> serverless-http(app)    (Netlify Functions)
+ *   - api/index.js                   -> exported handler        (Vercel Serverless Function)
  */
 export function createApp() {
   assertConfig();
@@ -22,12 +20,6 @@ export function createApp() {
 
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
-
-  // Netlify may deliver either "/api/..." (redirect rewrite) or "/.netlify/functions/api/..." (direct call).
-  app.use((req, _res, next) => {
-    if (req.url.startsWith(NETLIFY_PREFIX)) req.url = `/api${req.url.slice(NETLIFY_PREFIX.length)}` || '/api';
-    next();
-  });
 
   app.use(helmet({
     crossOriginResourcePolicy: { policy: config.cors.origins.length ? 'cross-origin' : 'same-origin' },

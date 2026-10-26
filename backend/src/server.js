@@ -1,4 +1,4 @@
-// Standalone Node.js entry point (VPS, Docker, Render, Fly, Railway ...). Netlify uses netlify/functions/api.mjs instead.
+// Standalone Node.js entry point (VPS, Docker, Render, Fly, Railway ...). Vercel uses api/index.js instead.
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { closePool, query } from './db/pool.js';

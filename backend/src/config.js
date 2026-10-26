@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
 // Load the repo-root .env first, then backend/.env. Real environment variables always win,
-// which is how Netlify / VPS / Docker provide configuration in production.
+// which is how Vercel / VPS / Docker provide configuration in production.
 const here = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(here, '../../.env'), quiet: true });
 dotenv.config({ path: path.resolve(here, '../.env'), quiet: true });
@@ -13,8 +13,8 @@ const bool = (v, d = false) => (v === undefined || v === '' ? d : ['1', 'true', 
 const list = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 const isProd = env.NODE_ENV === 'production';
-// Netlify Functions run on AWS Lambda
-const isServerless = bool(env.SERVERLESS) || Boolean(env.NETLIFY || env.VERCEL || env.AWS_LAMBDA_FUNCTION_NAME);
+// Vercel Functions run on AWS Lambda
+const isServerless = bool(env.SERVERLESS) || Boolean(env.VERCEL || env.AWS_LAMBDA_FUNCTION_NAME);
 
 export const config = {
   env: env.NODE_ENV || 'development',

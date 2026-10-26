@@ -243,7 +243,7 @@ export const system = asyncHandler(async (_req, res) => {
 // ---------------------------------------------------------------- backup
 export const downloadBackup = asyncHandler(async (req, res) => {
   if (config.isServerless) {
-    // Serverless hosts cap duration and response size (Netlify: 10 s / 6 MB, Vercel: 4.5 MB response), so a big export cannot complete there.
+    // Serverless hosts cap duration and response size (Vercel: 4.5 MB response limit), so a big export cannot complete there.
     const { rows } = await query('SELECT pg_database_size(current_database())::bigint AS bytes');
     if (rows[0].bytes > 4 * 1024 * 1024) throw new HttpError(413, 'This database is too large to download through the serverless host. Run "npm run backup" on your computer instead.', { code: 'BACKUP_TOO_LARGE' });
   }

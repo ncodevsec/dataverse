@@ -27,7 +27,7 @@ export default function Backup() {
       </Card>
       <Card className="p-5 text-sm">
         <h2 className="mb-1 text-base font-semibold">Large database or hosting limits?</h2>
-        <p className="text-muted">Serverless hosts such as Netlify limit a request to about 10 seconds and 6 MB, so big backups cannot be downloaded here. On your computer, with <code>DATABASE_URL</code> set, run <code>npm run backup</code>: it writes the same ZIP to a <code>backups/</code> folder.</p>
+        <p className="text-muted">Serverless hosts such as Vercel limit a response to about 4.5 MB, so big backups cannot be downloaded here. On your computer, with <code>DATABASE_URL</code> set, run <code>npm run backup</code>: it writes the same ZIP to a <code>backups/</code> folder.</p>
       </Card>
     </div>
   );

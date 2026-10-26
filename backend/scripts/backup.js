@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Writes a date/time-stamped backup ZIP (database.sql + img/) to ./backups (or --out <dir>).
-// Use this for big databases: the in-app download is limited by the host (e.g. Netlify's 10 s / 6 MB).
+// Use this for big databases: the in-app download is limited by the host (e.g. Vercel's 4.5 MB response limit).
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, assertConfig } from '../src/config.js';

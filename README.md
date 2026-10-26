@@ -1,12 +1,12 @@
 # Dataverse
 
-A modern full-stack rebuild of the PHP/MySQL Dataverse project: **profiles**, **Shekor** (family tree / generations) and **Caller ID** (shared contact directory), with authentication, roles, an Admin Panel, audit log, light/dark/system theme and a Netlify-ready serverless API.
+A modern full-stack rebuild of the PHP/MySQL Dataverse project: **profiles**, **Shekor** (family tree / generations) and **Caller ID** (shared contact directory), with authentication, roles, an Admin Panel, audit log, light/dark/system theme and a Vercel-ready serverless API.
 
 | Layer    | Technology                                                                               |
 | -------- | ---------------------------------------------------------------------------------------- |
 | Frontend | Vite, React 18, React Router 6, Tailwind CSS 4                                           |
 | Backend  | Node.js 20+, Express 4, PostgreSQL (`pg`), Zod validation, JWT (HttpOnly cookie), bcrypt |
-| Hosting  | Netlify (static site + one Netlify Function wrapping Express) – or any Node server       |
+| Hosting  | Vercel (static site + one Serverless Function wrapping Express) – or any Node server     |
 
 ```
 dataverse/
@@ -23,11 +23,11 @@ dataverse/
 │   │   └── server.js    app.listen() <- normal Node hosting
 │   ├── scripts/         migrate, create-admin, import-legacy
 │   └── tests/           integration tests
-├── netlify/functions/   api.mjs  <- wraps createApp() with serverless-http
+├── api/                 index.js <- Vercel Function exporting createApp()
 ├── database/
 │   ├── migrations/      001_init.sql
 │   └── import/          (git-ignored) put the legacy dump + photos here
-├── netlify.toml
+├── vercel.json
 └── .env.example
 ```
 
@@ -49,7 +49,7 @@ npm run db:migrate               # creates tables AND the first admin (section 4
 npm run dev
 ```
 
-Open <http://localhost:5173> and sign in with the bootstrap admin. Vite proxies `/api` to Express, so the browser sees a single origin (just like on Netlify) and the session cookie works without any CORS setup.
+Open <http://localhost:5173> and sign in with the bootstrap admin. Vite proxies `/api` to Express, so the browser sees a single origin (just like on Vercel) and the session cookie works without any CORS setup.
 
 Useful scripts
 
@@ -75,9 +75,9 @@ createdb -O dataverse dataverse
 # DATABASE_URL=postgres://dataverse:<password>@localhost:5432/dataverse
 ```
 
-**Hosted (required for Netlify)** – create a database at any provider, e.g. **Neon**, **Supabase**, Railway, Render or Aiven, and copy its connection string into `DATABASE_URL`.
+**Hosted (required for Vercel)** – create a database at any provider, e.g. **Neon**, **Supabase**, Railway, Render or Aiven, and copy its connection string into `DATABASE_URL`.
 
-- On serverless, prefer the provider's **pooled** connection string (Neon “pooled connection”, Supabase “Transaction pooler”). Each function instance opens only **one** connection (`PG_POOL_MAX` defaults to 1 on Netlify).
+- On serverless, prefer the provider's **pooled** connection string (Neon “pooled connection”, Supabase “Transaction pooler”). Each function instance opens only **one** connection (`PG_POOL_MAX` defaults to 1 on Vercel).
 - TLS is enabled automatically for non-local hosts. If your provider uses a self-signed certificate set `DATABASE_SSL_REJECT_UNAUTHORIZED=false`.
 
 **Tests** use their own database and **wipe it**:
@@ -158,7 +158,7 @@ Safety rails: admins cannot demote/deactivate/delete themselves, and the last ac
 - **Multiple spouses:** every marriage is a record (`marriages`) with optional dates and how it ended. `profiles.spouse_id` remains the *current* spouse and is kept in sync by the API. The profile page shows each marriage with its own children.
 - **Inherited address:** if the permanent address is empty, the profile page shows the nearest paternal ancestor's address (read-time; nothing is copied into the row).
 - **Profiles page:** newest first by default, four layouts (grid horizontal / grid vertical / rows cards / rows compact; remembered per browser) and infinite scrolling (also Posts and Caller ID).
-- **Backup (Admin → Backup, or `npm run backup`):** one ZIP named `dataverse-backup_YYYY-MM-DD_HH-MM-SS_UTC.zip` with `database.sql` (restorable data), `img/` (all profile photos, plus any files in a repo-level `img/` folder) and a README. Restore: empty DB → `npm run db:migrate` (without `BOOTSTRAP_ADMIN_*`) → `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database.sql`. On Netlify the in-app download only works for small databases (10 s / 6 MB limits); use `npm run backup` locally for big ones. Backups hold personal data and password hashes: never commit them (`backups/` is git-ignored).
+- **Backup (Admin → Backup, or `npm run backup`):** one ZIP named `dataverse-backup_YYYY-MM-DD_HH-MM-SS_UTC.zip` with `database.sql` (restorable data), `img/` (all profile photos, plus any files in a repo-level `img/` folder) and a README. Restore: empty DB → `npm run db:migrate` (without `BOOTSTRAP_ADMIN_*`) → `psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database.sql`. On Vercel the in-app download only works for small databases (10 s / 6 MB limits); use `npm run backup` locally for big ones. Backups hold personal data and password hashes: never commit them (`backups/` is git-ignored).
 
 ## 4d. Humans vs organizations, photo privacy, website (migration 004)
 
@@ -183,25 +183,21 @@ See [`.env.example`](.env.example) for the annotated list. Required: `DATABASE_U
 | `RESEND_API_KEY`, `MAIL_FROM`                                     | Optional password-reset email (Resend HTTP API)            |
 | `SERVE_FRONTEND`, `PORT`, `TRUST_PROXY`                           | Normal-server mode                                         |
 
-## 6. Deploying to Netlify (Free)
+## 6. Deploying to Vercel
 
-1. Push the repo to GitHub (section 9).
-2. Create a hosted PostgreSQL database (section 2) and run `npm run db:migrate` (and optionally `db:import`) **from your computer** against it.
-3. In Netlify: **Add new site → Import from Git**. `netlify.toml` already sets the build command (`npm run build`), publish dir (`frontend/dist`), functions dir and the redirects.
-4. **Site configuration → Environment variables**: add `DATABASE_URL`, `JWT_SECRET`, `SITE_URL` (your `https://…netlify.app` URL), and optionally `RESEND_API_KEY` / `MAIL_FROM`. Leave `CORS_ORIGINS` empty (same origin).
-5. Deploy. Check `https://<site>/api/health` and `/api/health/db`.
+See [docs/VERCEL.md](docs/VERCEL.md) for the full guide (environment variables, migrations, production branch, merging features).
 
-How it fits together: `netlify.toml` rewrites `/api/*` to `netlify/functions/api.mjs`, which wraps the same `createApp()` with `serverless-http`. The frontend and API share one origin, so the **HttpOnly session cookie + CSRF header** scheme works with no CORS.
+How it fits together: `vercel.json` rewrites `/api/*` to `api/index.js`, which exports the same `createApp()` Express app. The frontend and API share one origin, so the **HttpOnly session cookie + CSRF header** scheme works with no CORS.
 
-Free-tier notes
+Notes
 
-- Functions have a 10 s limit and a ~6 MB request/response limit. Photos are resized in the browser to ≤ 640 px and capped at 1 MB; vCard imports at 2 MB.
+- Vercel limits API responses to 4.5 MB. Photos are resized in the browser to ≤ 640 px and capped at 1 MB; vCard imports at 2 MB. Use `npm run backup` for big backups.
 - Rate limits and counters live in PostgreSQL (`rate_limits`), so they are shared across function instances.
 - Cold starts add a little latency to the first request after idle time.
 
-## 7. Moving from Netlify Functions to a normal Express server (VPS / Docker)
+## 7. Self-hosting on a normal Express server (VPS / Docker)
 
-Nothing in `backend/src` knows about Netlify – only `netlify/functions/api.mjs` does. To self-host:
+Nothing in `backend/src` knows about Vercel – only `api/index.js` does. To self-host:
 
 ```bash
 git clone <repo> && cd dataverse && npm ci
@@ -211,7 +207,7 @@ npm run db:migrate
 npm start                         # Express on $PORT serves /api AND the React app
 ```
 
-Put nginx/Caddy in front for HTTPS (cookies are `Secure` in production, so HTTPS is required) and keep the process alive with systemd or PM2 (`pm2 start backend/src/server.js --name dataverse`). Set `TRUST_PROXY=1` behind one proxy. To host the frontend elsewhere (e.g. keep it on Netlify while the API moves), build it with `VITE_API_URL=https://api.example.com` and set `CORS_ORIGINS=https://your-site.netlify.app` on the API – the API will then also need `SameSite=None` cookies or Bearer tokens; the simplest path is keeping both on one domain.
+Put nginx/Caddy in front for HTTPS (cookies are `Secure` in production, so HTTPS is required) and keep the process alive with systemd or PM2 (`pm2 start backend/src/server.js --name dataverse`). Set `TRUST_PROXY=1` behind one proxy. To host the frontend elsewhere (e.g. keep it on Vercel while the API moves), build it with `VITE_API_URL=https://api.example.com` and set `CORS_ORIGINS=https://your-site.vercel.app` on the API – the API will then also need `SameSite=None` cookies or Bearer tokens; the simplest path is keeping both on one domain.
 
 The same bundle also works on Render, Fly.io, Railway, etc. (start command `npm start`).
 
@@ -259,7 +255,7 @@ List endpoints are server-side paginated (`page`, `limit ≤ 100`) and return `{
 
 - **`Invalid configuration: JWT_SECRET …`** – set a ≥ 32-char secret.
 - **`self-signed certificate` from the database** – set `DATABASE_SSL_REJECT_UNAUTHORIZED=false`.
-- **`too many connections`** – use the provider's pooled URL; keep `PG_POOL_MAX=1` on Netlify.
+- **`too many connections`** – use the provider's pooled URL; keep `PG_POOL_MAX=1` on Vercel.
 - **`extension "pg_trgm" is not available`** – enable it in the provider's dashboard (Supabase: Database → Extensions) and re-run the migration.
-- **Signed out immediately after deploy** – the site must be served over HTTPS (Netlify does this) because the cookie is `Secure` in production.
+- **Signed out immediately after deploy** – the site must be served over HTTPS (Vercel does this) because the cookie is `Secure` in production.
 - **500 `MISCONFIGURED` from `/api`** – open the function logs; a required environment variable is missing.

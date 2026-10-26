@@ -25,9 +25,6 @@
   "devDependencies": {
     "concurrently": "^9.0.1"
   },
-  "dependencies": {
-    "serverless-http": "^3.2.0"
-  },
   "overrides": {
     "shell-quote": "^1.12.0"
   }
