@@ -8,7 +8,7 @@ Frontend (Vite/React) and backend (Express) both run on Vercel from the `product
 |---|---|
 | `DATABASE_URL` | your external PostgreSQL URL (prefer the pooled one) |
 | `JWT_SECRET` | 48+ random chars: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `NODE_ENV` | `production` |
+| `NODE_ENV` | `production` (build still installs dev deps via `npm ci --include=dev` in vercel.json) |
 | `SITE_URL` | `https://your-domain` |
 | `TRUST_PROXY` | `1` |
 | `DATABASE_SSL` | `true` (if your host requires SSL) |
