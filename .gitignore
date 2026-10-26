@@ -3,6 +3,7 @@ node_modules/
 # builds
 dist/
 .netlify/
+.vercel/
 # env & secrets
 .env
 .env.*

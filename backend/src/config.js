@@ -14,7 +14,7 @@ const list = (v) => (v || '').split(',').map((s) => s.trim()).filter(Boolean);
 
 const isProd = env.NODE_ENV === 'production';
 // Netlify Functions run on AWS Lambda
-const isServerless = bool(env.SERVERLESS) || Boolean(env.NETLIFY || env.AWS_LAMBDA_FUNCTION_NAME);
+const isServerless = bool(env.SERVERLESS) || Boolean(env.NETLIFY || env.VERCEL || env.AWS_LAMBDA_FUNCTION_NAME);
 
 export const config = {
   env: env.NODE_ENV || 'development',

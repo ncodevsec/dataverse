@@ -2,8 +2,12 @@ import { query } from '../db/pool.js';
 import { HttpError } from '../utils/httpError.js';
 
 export function clientIp(req) {
-  // Netlify sets this header itself and a client cannot spoof it; elsewhere fall back to Express' trusted-proxy aware req.ip.
-  return req.headers['x-nf-client-connection-ip'] || req.ip || 'unknown';
+  // Only trust a platform header on the platform that sets (and overwrites) it; on any other host a client could spoof it.
+  // Netlify: x-nf-client-connection-ip. Vercel: x-vercel-forwarded-for. Elsewhere: Express' trusted-proxy aware req.ip.
+  const platformIp = process.env.NETLIFY ? req.headers['x-nf-client-connection-ip']
+    : process.env.VERCEL ? req.headers['x-vercel-forwarded-for']
+    : undefined;
+  return (typeof platformIp === 'string' && platformIp.split(',')[0].trim()) || req.ip || 'unknown';
 }
 
 /**
