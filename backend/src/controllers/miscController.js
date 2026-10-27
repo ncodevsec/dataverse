@@ -6,6 +6,7 @@ import { lookupOrgs, INHERITED_LOGO_SQL } from '../services/orgService.js';
 import { searchContacts } from '../services/callerService.js';
 import { getTree } from '../services/treeService.js';
 import { searchPosts } from './postController.js';
+import { getFavicon } from '../services/faviconService.js';
 import { escapeLike } from '../utils/phone.js';
 
 export const publicSiteSettings = asyncHandler(async (_req, res) => res.json({ settings: publicSettings(await getSettings()) }));
@@ -83,4 +84,11 @@ export const dashboard = asyncHandler(async (req, res) => {
     daily: daily.rows, topTags: topTags.rows, districts: districts.rows, orgTypes: orgTypes.rows, mine: mine.rows[0],
     pendingUsers: pending.rows[0].n,
   });
+});
+
+export const favicon = asyncHandler(async (req, res) => {
+  const f = await getFavicon(req.params.domain);
+  if (!f) { res.set('Cache-Control', 'private, max-age=3600'); return res.status(404).end(); }
+  res.set({ 'Content-Type': f.type, 'Cache-Control': 'private, max-age=604800', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+  res.send(f.data);
 });

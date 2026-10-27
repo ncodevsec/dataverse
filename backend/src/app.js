@@ -38,7 +38,7 @@ export function createApp() {
       origin: (origin, cb) => cb(null, !origin || config.cors.origins.includes(origin)),
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Confirm-Password'],
       maxAge: 600,
     }));
   }

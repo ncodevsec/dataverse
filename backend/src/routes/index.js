@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { authRouter, meRouter } from './auth.js';
 import { peoplesRouter, postsRouter } from './peoples.js';
 import { contactsRouter } from './contacts.js';
@@ -22,6 +23,7 @@ api.use('/auth', authRouter);
 api.use(requireAuth);
 api.use('/me', meRouter);
 api.get('/dashboard', misc.dashboard);
+api.get('/favicons/:domain', rateLimit({ name: 'favicon', windowMs: 5 * 60 * 1000, max: 400, keyFn: (req) => req.user?.id }), misc.favicon);
 api.get('/tags', validate({ query: tagsQuery }), misc.tags);
 api.get('/search', validate({ query: searchQuery }), misc.search);
 api.get('/tree/:id', validate({ params: idParam, query: treeQuery }), misc.tree);

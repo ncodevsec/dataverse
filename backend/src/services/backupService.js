@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Readable } from 'node:stream';
-import { ZipArchive } from 'archiver';
+import { Readable, Writable } from 'node:stream';
+import { ZipWriter, Uint8ArrayReader, TextReader, configure } from '@zip.js/zip.js';
 import { query } from '../db/pool.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -96,69 +96,57 @@ function* walk(dir, rel = '') {
 /** Candidate folders for image files on disk (the app itself stores photos in the database). */
 export const imageDirs = () => [path.join(repoRoot, 'img'), path.join(repoRoot, 'database', 'import', 'img')].filter((d) => fs.existsSync(d) && fs.statSync(d).isDirectory());
 
-/**
- * Builds ONE zip into `out` (an http response or a file stream):
- *   database.sql   restorable data dump
- *   img/...        every people photo (from the database) plus any files found in an img folder on disk
- *   manifest.json  counts + migrations, README.txt  restore steps
- */
-export async function writeBackup(out, { now = new Date() } = {}) {
-  const archive = new ZipArchive({ zlib: { level: 6 } });
-  const done = new Promise((resolve, reject) => { archive.on('error', reject); out.on('error', reject); out.on('close', resolve); out.on('finish', resolve); });
-  archive.pipe(out);
-  const throttle = () => new Promise((r) => archive.once('entry', r));
+configure({ useWebWorkers: false });
 
+/**
+ * Builds ONE password-protected zip (AES-256) into `out` (an http response or a file stream):
+ *   database.sql   restorable data dump
+ *   img/...        every profile photo / logo (from the database) plus any files found in an img folder on disk
+ *   manifest.json  counts + migrations, README.txt  restore steps
+ * `password` is required: an unencrypted backup of this data is never produced.
+ */
+export async function writeBackup(out, { password, now = new Date() } = {}) {
+  if (typeof password !== 'string' || password.length < 1) throw new Error('A password is required to create a backup');
+  const zip = new ZipWriter(Writable.toWeb(out), { password, encryptionStrength: 3, level: 6 });
   const stats = {};
-  const sql = Readable.from(dumpSql(stats), { objectMode: false });
-  const sqlEntry = throttle();
-  archive.append(sql, { name: 'database.sql' });
-  await sqlEntry;
+  async function* sqlChunks() { for await (const c of dumpSql(stats)) yield Buffer.from(c, 'utf8'); }
+  await zip.add('database.sql', Readable.toWeb(Readable.from(sqlChunks(), { objectMode: false })));
 
   const added = new Set();
   let photos = 0;
-  for (let offset = 0; ; offset += 20) {
-    const { rows } = await query('SELECT people_id, content_type, data FROM people_photos ORDER BY people_id LIMIT 20 OFFSET $1', [offset]);
-    if (!rows.length) break;
-    for (const r of rows) {
-      const name = `img/people/people_${r.people_id}.${EXT[r.content_type] || 'bin'}`;
-      const entry = throttle();
-      archive.append(r.data, { name }); added.add(name); photos++;
-      await entry;
+  const addPhotos = async (table, idCol, folder, prefix) => {
+    for (let offset = 0; ; offset += 20) {
+      const { rows } = await query(`SELECT ${idCol} AS id, content_type, data FROM ${table} ORDER BY ${idCol} LIMIT 20 OFFSET $1`, [offset]);
+      if (!rows.length) break;
+      for (const r of rows) {
+        const name = `img/${folder}/${prefix}_${r.id}.${EXT[r.content_type] || 'bin'}`;
+        await zip.add(name, new Uint8ArrayReader(new Uint8Array(r.data))); added.add(name); photos++;
+      }
+      if (rows.length < 20) break;
     }
-    if (rows.length < 20) break;
-  }
-  for (let offset = 0; ; offset += 20) {
-    const { rows } = await query('SELECT organization_id, content_type, data FROM organization_photos ORDER BY organization_id LIMIT 20 OFFSET $1', [offset]);
-    if (!rows.length) break;
-    for (const r of rows) {
-      const name = `img/organization/organization_${r.organization_id}.${EXT[r.content_type] || 'bin'}`;
-      const entry = throttle();
-      archive.append(r.data, { name }); added.add(name); photos++;
-      await entry;
-    }
-    if (rows.length < 20) break;
-  }
+  };
+  await addPhotos('people_photos', 'people_id', 'people', 'people');
+  await addPhotos('organization_photos', 'organization_id', 'organization', 'organization');
   let diskFiles = 0;
   for (const dir of imageDirs()) {
     for (const f of walk(dir)) {
       const name = `img/${f.rel}`;
       if (added.has(name)) continue;
-      const entry = throttle();
-      archive.file(f.full, { name }); added.add(name); diskFiles++;
-      await entry;
+      await zip.add(name, new Uint8ArrayReader(new Uint8Array(fs.readFileSync(f.full)))); added.add(name); diskFiles++;
     }
   }
-  const migrations = (await query('SELECT name, applied_at FROM schema_migrations ORDER BY name').catch(() => ({ rows: [] }))).rows;
-  const manifest = { app: 'dataverse', createdAt: now.toISOString(), rows: stats, photosFromDatabase: photos, imageFilesFromDisk: diskFiles, migrations: migrations.map((m) => m.name) };
-  archive.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
-  archive.append([
-    'Dataverse backup', `Created: ${now.toISOString()}`, '',
-    'database.sql  All data (users incl. password hashes, peoples, photos, contacts, posts, links, settings, audit log).',
-    'img/          People photos and organization logos exported as files (the same images are also inside database.sql).', '',
+  const migrations = (await query('SELECT name FROM schema_migrations ORDER BY name').catch(() => ({ rows: [] }))).rows;
+  const manifest = { app: 'dataverse', createdAt: now.toISOString(), encrypted: 'AES-256', rows: stats, photosFromDatabase: photos, imageFilesFromDisk: diskFiles, migrations: migrations.map((m) => m.name) };
+  await zip.add('manifest.json', new TextReader(JSON.stringify(manifest, null, 2)));
+  await zip.add('README.txt', new TextReader([
+    'Dataverse backup (encrypted)', `Created: ${now.toISOString()}`, '',
+    'This ZIP is AES-256 encrypted with the password of the administrator who created it.',
+    'Open it with 7-Zip, WinZip, Keka or `7z x file.zip` (the built-in Windows Explorer cannot open AES zips).', '',
+    'database.sql  All data (users incl. password hashes, peoples, organizations, photos, contacts, posts, links, settings, audit log).',
+    'img/          Photos and logos exported as files (the same images are also inside database.sql).', '',
     'RESTORE', '1. Create an empty PostgreSQL database and set DATABASE_URL (do NOT set BOOTSTRAP_ADMIN_* for this step).',
     '2. npm run db:migrate', '3. psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database.sql', '',
-    'KEEP THIS FILE PRIVATE: it contains personal data and password hashes.', ''].join('\n'), { name: 'README.txt' });
-  await archive.finalize();
-  await done;
+    'KEEP THIS FILE PRIVATE: it contains personal data and password hashes.', ''].join('\n')));
+  await zip.close();
   return manifest;
 }

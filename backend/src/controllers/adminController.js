@@ -249,7 +249,7 @@ export const downloadBackup = asyncHandler(async (req, res) => {
     if (rows[0].bytes > 4 * 1024 * 1024) throw new HttpError(413, 'This database is too large to download through the serverless host. Run "npm run backup" on your computer instead.', { code: 'BACKUP_TOO_LARGE' });
   }
   const name = backupFileName();
-  await audit(req, 'system.backup', { entityType: 'system', summary: `Exported a full backup (${name})` });
+  await audit(req, 'system.backup', { entityType: 'system', summary: `Exported a full encrypted backup (${name})` });
   res.set({ 'Content-Type': 'application/zip', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
-  try { await writeBackup(res); } catch (err) { console.error('[backup] failed:', err.message); res.destroy(err); }
+  try { await writeBackup(res, { password: req.reauthPassword }); } catch (err) { console.error('[backup] failed:', err.message); res.destroy(err); }
 });

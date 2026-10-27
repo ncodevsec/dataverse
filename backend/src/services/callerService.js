@@ -4,7 +4,7 @@ import { digitsOnly, escapeLike, formatPhone } from '../utils/phone.js';
 import { parseVcf } from '../utils/vcf.js';
 
 const SELECT = `SELECT c.id, c.name, c.number, c.connection_id, c.people_id, c.organization_id, c.created_by, c.created_at,
-       rel.name AS relative_name, prof.name AS people_name, prof.photo_updated_at AS people_photo, org.name AS organization_name
+       rel.name AS relative_name, prof.name AS people_name, prof.photo_updated_at AS people_photo, prof.gender AS people_gender, org.name AS organization_name, org.photo_updated_at AS organization_photo
   FROM caller_contacts c
   LEFT JOIN peoples rel  ON rel.id  = c.connection_id
   LEFT JOIN peoples prof ON prof.id = c.people_id
@@ -20,6 +20,10 @@ export const toContact = (r, viewer) => ({
   peopleName: r.people_name,
   organizationId: r.organization_id,
   organizationName: r.organization_name,
+  // photo of whoever the number belongs to (person first, else organization); the UI falls back to a call icon
+  photoUrl: r.people_photo ? `/api/peoples/${r.people_id}/photo?v=${new Date(r.people_photo).getTime()}`
+    : r.organization_photo ? `/api/organizations/${r.organization_id}/photo?v=${new Date(r.organization_photo).getTime()}` : null,
+  photoGender: r.people_photo ? r.people_gender : null,
   createdAt: r.created_at,
   canEdit: !!viewer && (viewer.role === 'ADMIN' || r.created_by === viewer.id),
 });
