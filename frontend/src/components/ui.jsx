@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, forwardRef } from 'react';
+import { useEffect, useId, useRef, useState, forwardRef } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './Icon.jsx';
 import { useSite } from '../context/AppContext.jsx';
+import { api } from '../lib/api.js';
 import { initials } from '../lib/format.js';
 
 export const cx = (...a) => a.filter(Boolean).join(' ');
@@ -88,12 +89,45 @@ export function Checkbox({ label, hint, ...props }) {
   );
 }
 
-export function SearchInput({ value, onChange, placeholder = 'Search', className, autoFocus }) {
+export function SearchInput({ value, onChange, placeholder = 'Search', className, autoFocus, tagSuggest = false }) {
+  const [items, setItems] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const m = tagSuggest ? /(^|\s)#([^\s#]*)$/.exec(value || '') : null;
+  const prefix = m ? m[2].toLowerCase() : null;
+  useEffect(() => {
+    if (prefix === null) { setItems([]); return undefined; }
+    let live = true;
+    const t = setTimeout(() => api.get('/tags', { prefix, limit: 5 }).then((d) => { if (live) { setItems(d.items); setActive(0); } }).catch(() => {}), 120);
+    return () => { live = false; clearTimeout(t); };
+  }, [prefix]);
+  const pick = (tag) => { onChange(`${value.slice(0, m.index + m[1].length)}#${tag} `); setOpen(false); };
+  const show = open && prefix !== null && items.length > 0;
+  const onKey = (e) => {
+    if (!show) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, items.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)); }
+    else if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pick(items[active].value); }
+    else if (e.key === 'Escape') setOpen(false);
+  };
   return (
     <div className={cx('relative', className)}>
       <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus} aria-label={placeholder}
+      <input type="search" value={value} onChange={(e) => { onChange(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} onKeyDown={onKey}
+        placeholder={placeholder} autoFocus={autoFocus} aria-label={placeholder} autoComplete="off" role={tagSuggest ? 'combobox' : undefined} aria-expanded={tagSuggest ? show : undefined}
         className={cx(fieldBase, 'h-11 border-line pl-9')} />
+      {show && (
+        <ul role="listbox" aria-label="Matching tags" className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-xl">
+          {items.map((t, i) => (
+            <li key={t.value} role="option" aria-selected={i === active}>
+              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pick(t.value)}
+                className={cx('flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm', i === active ? 'bg-accent-soft' : 'hover:bg-surface-2')}>
+                <span className="font-medium">#{t.value}</span><span className="text-xs text-muted">{t.count.toLocaleString()} {t.count === 1 ? 'use' : 'uses'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

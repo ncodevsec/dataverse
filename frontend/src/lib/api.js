@@ -10,10 +10,10 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, { body, query, raw, signal } = {}) {
+async function request(method, path, { body, query, raw, signal, headers: extra } = {}) {
   const url = new URL(BASE + path, window.location.origin);
   if (query) for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
-  const headers = { 'X-Requested-With': 'dataverse' }; // CSRF guard header required by the API for cookie sessions
+  const headers = { 'X-Requested-With': 'dataverse', ...(extra || {}) }; // CSRF guard header required by the API for cookie sessions
   let payload;
   if (raw) { headers['Content-Type'] = raw.type; payload = raw; }
   else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }
@@ -37,9 +37,11 @@ async function request(method, path, { body, query, raw, signal } = {}) {
 
 export const api = {
   get: (p, query, signal) => request('GET', p, { query, signal }),
-  post: (p, body) => request('POST', p, { body }),
-  put: (p, body) => request('PUT', p, { body }),
-  patch: (p, body) => request('PATCH', p, { body }),
-  del: (p) => request('DELETE', p),
+  post: (p, body, opts) => request('POST', p, { body, ...opts }),
+  put: (p, body, opts) => request('PUT', p, { body, ...opts }),
+  patch: (p, body, opts) => request('PATCH', p, { body, ...opts }),
+  del: (p, opts) => request('DELETE', p, { ...opts }),
   upload: (p, blob) => request('PUT', p, { raw: blob }),
 };
+/** Header that carries the user's own password for step-up confirmation (base64 of UTF-8, so any character works). */
+export const confirmHeader = (password) => ({ 'X-Confirm-Password': btoa(String.fromCharCode(...new TextEncoder().encode(password))) });
