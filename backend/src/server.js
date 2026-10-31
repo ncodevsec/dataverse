@@ -9,7 +9,7 @@ const app = createApp();
 if (config.bootstrapAdmin.email && config.bootstrapAdmin.password) {
   bootstrapAdmin()
     .then((r) => r.created && console.log(`[bootstrap] administrator created: ${r.email}`))
-    .catch((e) => console.error('[bootstrap] could not create administrator:', e.errors?.[0]?.message || e.message));
+    .catch((e) => console.error('[bootstrap] could not create administrator:', e.issues?.[0]?.message || e.message));
 }
 
 const server = app.listen(config.port, config.host, async () => {

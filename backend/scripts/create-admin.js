@@ -22,5 +22,5 @@ if (!input.email || !input.password) {
 
 bootstrapAdmin(input)
   .then((r) => console.log(r.created ? `Admin created: ${r.email}` : `A user with that email/username already exists - nothing changed (${r.email}).`))
-  .catch((err) => { console.error(err.errors?.map((e) => `${e.path.join('.')}: ${e.message}`).join('\n') || err.message); process.exitCode = 1; })
+  .catch((err) => { console.error(err.issues?.map((e) => `${e.path.join('.')}: ${e.message}`).join('\n') || err.message); process.exitCode = 1; })
   .finally(closePool);

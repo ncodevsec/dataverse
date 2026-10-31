@@ -314,6 +314,6 @@ export const importPersonSchema = z.object({
 }).strict();
 export const bulkImportEnvelope = z.object({
   _help: z.any().optional(),
-  defaults: z.record(z.any()).optional(),
-  peoples: z.array(z.record(z.any())).min(1, 'Add at least one person').max(500, 'At most 500 people per import'),
+  defaults: z.record(z.string(), z.any()).optional(),
+  peoples: z.array(z.record(z.string(), z.any())).min(1, 'Add at least one person').max(500, 'At most 500 people per import'),
 }).strict();
